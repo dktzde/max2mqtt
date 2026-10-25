@@ -264,7 +264,7 @@ log_level: "info"
 Opened CUL TCP connection addr=<host>:<port>
 ```
 
-followed by init commands `V`, `Zr`, and `X` (same as USB).
+followed by init commands `V`, `Zr`, `Za<gateway_id>` and `X` (same as USB).
 
 ## Troubleshooting
 

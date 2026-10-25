@@ -1,5 +1,37 @@
 # MAX! to MQTT Bridge for Home Assistant
 
+## Start here: gateway_id
+
+MAX! devices remember the address of the gateway they were paired with and only accept commands from that address.
+The bridge sends with `gateway_id` as its own address, so set it **before the first start**:
+
+| Your situation | `gateway_id` |
+|---|---|
+| Replacing a **MAX! Cube** | The Cube's RF address – **no re-pairing needed** |
+| Coming from **FHEM** (`CUL_MAX`) | The address of your `CUL_MAX` device (`define <name> CUL_MAX <addr>`) |
+| New installation | Any 6-digit hex value not used by another MAX! device (e.g. `123456`), then pair all devices |
+
+Format: 6 hex digits without `0x`, e.g. `0A1B2C`.
+
+### Replacing a MAX! Cube without re-pairing
+
+1. **Find the Cube's RF address**, either way:
+   - **From the Cube (while it is still running):** Stop the Cube integration or MAX! software first (the Cube accepts only one TCP client), then run `nc <cube-ip> 62910`.
+     The first line is `H:<serial>,<rf-address>,<firmware>,...`, e.g. `H:KEQ0123456,0a1b2c,0113,...` → `0A1B2C`.
+     The serial number on the Cube's label (`KEQ…`) is **not** the RF address.
+   - **From the radio (Cube already switched off):** Start the bridge with `log_level: debug` and any `gateway_id`.
+     Turn the wheel of a thermostat or open and close a window with a shutter contact.
+     In the log, `Parsed Packet detail` of the state messages (`type=0x60` radiator thermostat, `0x70` wall thermostat, `0x30` shutter contact) shows `dst=<address>`.
+     That is the address your devices still report to – the Cube's RF address (ignore `dst=000000` and addresses of your own devices).
+2. **Switch the Cube off for good.** Two gateways with the same address would both acknowledge and send, and the Cube would overwrite settings.
+3. Set `gateway_id` to the Cube's RF address and restart the add-on.
+4. **Check:** devices stop repeating their messages (the CUL now acknowledges them, see [Auto-Ack](DOCS.md#auto-ack-za)), the RF error sensors turn off, and a setpoint change from Home Assistant is confirmed in the log (`Short Ack applied pending setpoint`, no retry).
+
+Nothing has to be transferred: week programs, eco/comfort temperatures and associations (e.g. shutter contact ↔ thermostat) are stored in the devices.
+The room/group IDs are learned automatically from the first received messages.
+
+## About
+
 If you have an existing MAX! installation with e.g. FHEM and you want to migrate to Home Assistant, this might be a solution for you.
 
 I personally want to keep at least my MAX! wall thermostats until there are good alternatives available (battery driven, affordable, modern looking, display...).
@@ -13,6 +45,13 @@ Additionally, I was curious to see if I could use AI to help me with the develop
 This add-on is a lightweight Go-based bridge connecting a CUL (USB serial or network TCP, 868MHz MAX! protocol) to Home Assistant via MQTT. It focuses on usage of an existing MAX! installation with wall thermostats and radiator valves, only supporting the really required functions to be used with Home Assistant. It's not intended as a full replacement of MAX! Cube or the implementation contained in FHEM.
 
 ## What's new in this fork
+
+### v1.3.3 (dktzde fork) — Auto-Ack, valve position, shutter contacts
+
+- **Auto-Ack (`Za`):** the CUL acknowledges every message sent to `gateway_id` by itself (like FHEM), so devices no longer repeat their messages or set their RF error bit, saving battery and duty cycle
+- **Valve position** sensor (0–100 %) for each radiator thermostat, retained on `max/<id>/valve`
+- **RF error** diagnostic binary sensor (`rf_error` in `max/<id>/state`)
+- **Shutter contacts** (`0x30`): window open/closed, battery and RF error binary sensors; link them with a radiator thermostat, see [Device Association](#device-association-linking-devices)
 
 ### v1.3.0 — Device configuration in Home Assistant
 
@@ -35,7 +74,7 @@ Exposes FHEM-compatible settings as MQTT discovery entities (`entity_category: c
 serial_port: "tcp://192.168.1.50:2323"
 baud_rate: 38400
 mqtt_broker: "tcp://homeassistant.local:1883"
-gateway_id: "123456"
+gateway_id: "123456"   # see "Start here: gateway_id" above
 ```
 
 See [DOCS.md](DOCS.md) for Network CUL and Device Configuration details.
@@ -47,11 +86,12 @@ But it should work with fresh devices too...
 These are the features:
 
 -   **CUL Communication**: Reads and sends `Z` telegrams from CUL-FW compatible devices over USB serial or TCP (`tcp://host:port`).
--   **MAX! Protocol Parsing**: Decodes Temperature, Mode, and Battery State.
+-   **Auto-Ack**: The CUL acknowledges all messages sent to `gateway_id` (`Za`), so devices do not repeat them.
+-   **MAX! Protocol Parsing**: Decodes Temperature, Mode, Battery State, Valve Position, RF error and Window State.
 -   **Time Synchronization**: Automatically syncs time with devices.
 -   **Pairing Mode**: Trigger via MQTT (`max/bridge/pair`) to pair new devices.
 -   **Association Management**: Trigger via MQTT (`max/bridge/associate`) to associate radiator valves with wall thermostats.
--   **Battery**: Reports battery state (OK/Low) for thermostats.
+-   **Battery**: Reports battery state (OK/Low) for thermostats and shutter contacts.
 -   **Thermostat Configuration**: Full ConfigTemperatures / ConfigValve / display / group / week profile via HA config entities; climate presets eco/comfort/boost; Ack-confirmed state (CUL push).
 -   **TX Management**:
     - **Duty Cycle Management**: Adheres to 868MHz 1% transmission limits using CUL's credit system. When the configurable minimum threshold is exceeded, the bridge will not send any commands and the old state is restored.
@@ -90,10 +130,10 @@ Prefer Home Assistant schedules for day-to-day heating; device week profile JSON
 
 1.  Prepare the Add-on:
     - Either copy this directory to your Home Assistant `addons/local/max2mqtt` folder.
-    - Or use the Add-on Store in Home Assistant: Add the repository `https://github.com/Dad-Ju/max2mqtt` (this fork, includes TCP CUL support). Upstream: `https://github.com/pwurbs/max2mqtt`.
+    - Or use the Add-on Store in Home Assistant: Add the repository `https://github.com/dktzde/max2mqtt` (this fork: TCP CUL support plus Auto-Ack, valve position and shutter contacts). Upstream: `https://github.com/Dad-Ju/max2mqtt`, originally `https://github.com/pwurbs/max2mqtt`.
 2.  Navigate to the Add-on Store, either the Local addon-ons section or the configured repository.
 3.  Install **MAX! to MQTT Bridge**.
-4.  Configure the parameters like described below.
+4.  Configure the parameters like described below – set `gateway_id` first, see [Start here](#start-here-gateway_id).
 5.  Start the Add-on.
 
 ### Quick start: Network CUL
@@ -116,7 +156,7 @@ USB sticks still use a path such as `/dev/serial/by-id/...` plus `baud_rate` as 
 | `MQTT_BROKER` | `mqtt_broker` | `tcp://homeassistant:1883` | MQTT Broker URL |
 | `MQTT_USER` | `mqtt_user` | (empty) | MQTT Username |
 | `MQTT_PASS` | `mqtt_pass` | (empty) | MQTT Password |
-| `GATEWAY_ID` | `gateway_id` | `123456` | Gateway Hex ID (3 bytes) |
+| `GATEWAY_ID` | `gateway_id` | `123456` | Gateway address, 6 hex digits. Use your old Cube / FHEM `CUL_MAX` address to keep existing pairings, see [Start here](#start-here-gateway_id) |
 | `LOG_LEVEL` | `log_level` | `info` | Log verbosity (debug/info/warning/error) |
 | `DUTY_CYCLE_MIN_CREDITS` | `duty_cycle_min_credits` | `200` | Min credits to allow sending |
 | `COMMAND_TIMEOUT` | `command_timeout` | `1m` | Max time a command waits in queue before being discarded due to e.g. duty cycle limits |
@@ -178,4 +218,4 @@ Find more detailled information on the Documentation tab of the "MAX! to MQTT Br
 
 ## Feedback
 
-Please open an issue on [GitHub](https://github.com/Dad-Ju/max2mqtt) if you find any bugs or have suggestions for improvements.
+Please open an issue on [GitHub](https://github.com/dktzde/max2mqtt) if you find any bugs or have suggestions for improvements.
