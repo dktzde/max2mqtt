@@ -64,7 +64,8 @@ These are the features:
     - **Climate**: Thermostat control with support for `temperature` (setpoint), `current_temperature` (actual), `hvac_action` (heating/idle), and `hvac_mode` (auto/heat/off).
     - **Number / Select / Text / Button**: Config entities (eco/comfort/min/max/offset/window/valve/display/group/week profile/disassociate/factory reset).
     - **Climate presets**: eco, comfort, boost.
-    - **Binary Sensor**: Battery status (OK/Low).
+    - **Binary Sensor**: Battery status (OK/Low), RF error (diagnostic: device cannot reach its link partner/gateway).
+    - **Sensor**: Valve position in % (radiator thermostats, retained on `max/<id>/valve`).
 -   **Pairing Mode**: Trigger via MQTT (`max/bridge/pair`) to pair new devices.
 -   **Association**: Trigger via MQTT (`max/bridge/associate`) to associate radiator valves with wall thermostats.
 -   **Retained Messages**: All MQTT messages (discovery and state) are published with the `retain` flag. This ensures Home Assistant keeps entities and their last known values across bridge or HA restarts.
@@ -77,7 +78,7 @@ These are the features:
     - Boost: heat
 
 ### Not covered
-- Processing live valve position / signal strength as sensors
+- Signal strength (RSSI) as sensor
 - Shutter contacts and eco push-buttons as first-class entities
 - Cube/MAXLAN polling
 - fakeWT / fakeSC (external sensor simulation)

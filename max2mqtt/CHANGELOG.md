@@ -1,6 +1,8 @@
 ## Unreleased
 
 - Set culfw auto-ack address (`Za<gateway_id>`) on CUL init, so devices get an Ack for messages sent to the gateway; ignore the CUL's own auto-Acks
+- Valve position sensor (0-100 %) for radiator thermostats from ThermostatState (`0x60`) and their Acks, retained on `max/<id>/valve`
+- RF error diagnostic binary sensor from status bit 6 (`rf_error` in `max/<id>/state`)
 
 ## 1.3.2
 
