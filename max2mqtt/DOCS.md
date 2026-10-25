@@ -119,6 +119,9 @@ This bridge implements the following filter of message types.
 -   **Radiator Thermostat State (`0x60`)**:
     -   **Description**: Periodic status updates from radiator valves.
     -   **Why**: Accepted to monitor Battery State and confirm receipt of commands sent directly to valves.
+    -   **Valve position**: Byte 1 of the payload is the valve opening in % (FHEM `valveposition`). It is published retained on `max/<id>/valve` and exposed as sensor *Valve Position*. Acks (`0x02`) from a radiator thermostat carry the same layout and update the value too; for wall thermostats this byte is the display flag and is ignored. A device counts as radiator thermostat once a `0x60` was received since the bridge started.
+    -   **Note**: Radiator thermostats only send their state when something changes (valve moves, setpoint changes), so the value can stay unchanged for a long time.
+-   **RF error bit**: Bit 6 of the status byte (`0x02`/`0x60`/`0x70`) is published as `rf_error` in `max/<id>/state` and exposed as diagnostic binary sensor *RF Error*.
 
 
 ### Ignored Message Types

@@ -1,3 +1,8 @@
+## Unreleased
+
+- Valve position sensor (0-100 %) for radiator thermostats from ThermostatState (`0x60`) and their Acks, retained on `max/<id>/valve`
+- RF error diagnostic binary sensor from status bit 6 (`rf_error` in `max/<id>/state`)
+
 ## 1.3.2
 
 - Apply expected setpoint on short device Ack (FHEM AckSetTemperature) — verification no longer requires a full status payload

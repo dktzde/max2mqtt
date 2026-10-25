@@ -111,6 +111,14 @@ func markDeviceType(deviceAddr string, pktType int) {
 	}
 }
 
+// isRadiatorDevice reports whether a ThermostatState (0x60) has been seen from the device
+func isRadiatorDevice(deviceAddr string) bool {
+	cfg := getDeviceConfig(deviceAddr)
+	configMutex.RLock()
+	defer configMutex.RUnlock()
+	return cfg.IsRadiator
+}
+
 func updateDeviceGroupID(deviceAddr string, group int) {
 	if group <= 0 {
 		return

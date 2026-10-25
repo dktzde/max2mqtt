@@ -58,6 +58,7 @@ var (
 const (
 	MaxMsgStart      = 'Z'
 	TopicFormatState = "max/%s/state"
+	TopicFormatValve = "max/%s/valve"
 	HexTypeFormat    = "0x%02X"
 )
 
@@ -499,6 +500,9 @@ func handleSerialMessage(raw string) {
 
 	sendDiscovery(pkt.SrcAddr)
 	updateDeviceState(pkt.SrcAddr, newData)
+	if newData.ValvePosition != nil {
+		publishValvePosition(pkt.SrcAddr, *newData.ValvePosition)
+	}
 }
 
 func updateDeviceState(srcAddr string, newData *MaxDeviceData) {
@@ -528,6 +532,9 @@ func updateDeviceState(srcAddr string, newData *MaxDeviceData) {
 	}
 	if newData.Battery != "" {
 		existing.Battery = newData.Battery
+	}
+	if newData.RFError != nil {
+		existing.RFError = newData.RFError
 	}
 	if newData.PresetMode != "" {
 		existing.PresetMode = newData.PresetMode
@@ -577,6 +584,12 @@ type MaxDeviceData struct {
 	HVACAction string `json:"hvac_action"`
 	Battery    string `json:"battery"`
 	PresetMode string `json:"preset_mode"`
+	// RFError: device reports it cannot reach its link partner / gateway (status bit 6)
+	RFError *bool `json:"rf_error,omitempty"`
+
+	// ValvePosition (0-100 %) from radiator thermostats; published on its own retained topic,
+	// so the last value survives a bridge restart (state cache starts empty)
+	ValvePosition *int `json:"-"`
 }
 
 // convert pointer to string for appropriate logging
@@ -585,8 +598,12 @@ func (d *MaxDeviceData) String() string {
 	if d.CurrentTemperature != nil {
 		curTempStr = fmt.Sprintf("%.1f", *d.CurrentTemperature)
 	}
-	return fmt.Sprintf("Temp: %.1f, CurTemp: %s, Mode: %s, Action: %s, Batt: %s",
-		d.Temperature, curTempStr, d.Mode, d.HVACAction, d.Battery)
+	valveStr := "N/A"
+	if d.ValvePosition != nil {
+		valveStr = fmt.Sprintf("%d%%", *d.ValvePosition)
+	}
+	return fmt.Sprintf("Temp: %.1f, CurTemp: %s, Mode: %s, Action: %s, Batt: %s, Valve: %s",
+		d.Temperature, curTempStr, d.Mode, d.HVACAction, d.Battery, valveStr)
 }
 
 // decodePayload parses the MAX! thermostat state payload
@@ -598,7 +615,7 @@ func decodePayload(pkt *MaxPacket) *MaxDeviceData {
 	case 0x40:
 		return decodeSetTemperature(pkt.Payload)
 	case 0x02, 0x60, 0x70:
-		return decodeThermostatStatus(pkt.Type, pkt.Payload)
+		return decodeThermostatStatus(pkt.Type, pkt.Payload, isRadiatorDevice(pkt.SrcAddr))
 	default:
 		return nil
 	}
@@ -647,8 +664,10 @@ func decodeSetTemperature(payload []byte) *MaxDeviceData {
 }
 
 // decodeThermostatStatus decodes Type 0x02, 0x60, 0x70 (Thermostat Status)
-// Contains Mode, Battery, Setpoint, and optionally Actual Temperature
-func decodeThermostatStatus(pktType int, payload []byte) *MaxDeviceData {
+// Contains Mode, Battery, RF error, Setpoint, and optionally Actual Temperature.
+// Byte 1 is the valve position for radiator thermostats (0x60, and their Acks);
+// for wall thermostats (0x70) it is the display flag, so isRadiator gates it for Acks.
+func decodeThermostatStatus(pktType int, payload []byte, isRadiator bool) *MaxDeviceData {
 	// For Type 0x02, skip the first byte (generic status/ack)
 	if pktType == 0x02 {
 		if len(payload) < 1 {
@@ -671,6 +690,17 @@ func decodeThermostatStatus(pktType int, payload []byte) *MaxDeviceData {
 		data.Battery = "low"
 	} else {
 		data.Battery = "ok"
+	}
+
+	// Byte 0 bit 6: RF error (link partner / gateway not reachable)
+	rfError := (payload[0] & 0x40) != 0
+	data.RFError = &rfError
+
+	// Byte 1: Valve position in % (radiator thermostats only)
+	if pktType == 0x60 || (pktType == 0x02 && isRadiator) {
+		if valve := int(payload[1]); valve <= 100 {
+			data.ValvePosition = &valve
+		}
 	}
 
 	// Byte 2: Setpoint Temperature
@@ -756,9 +786,45 @@ func sendDiscovery(srcAddr string) {
 	bytes, _ = json.Marshal(battPayload)
 	mqttClient.Publish(battTopic, 0, true, bytes)
 
+	rfTopic := fmt.Sprintf("homeassistant/binary_sensor/%s_rf_error/config", deviceID)
+	rfPayload := map[string]interface{}{
+		"name":            "RF Error",
+		"unique_id":       deviceID + "_rf_error",
+		"device_class":    "problem",
+		"entity_category": "diagnostic",
+		"state_topic":     fmt.Sprintf(TopicFormatState, srcAddr),
+		"value_template":  "{{ 'ON' if value_json.get('rf_error') else 'OFF' }}",
+		"device":          deviceInfo,
+	}
+	bytes, _ = json.Marshal(rfPayload)
+	mqttClient.Publish(rfTopic, 0, true, bytes)
+
+	if isRadiatorDevice(srcAddr) {
+		valveTopic := fmt.Sprintf("homeassistant/sensor/%s_valve_position/config", deviceID)
+		valvePayload := map[string]interface{}{
+			"name":                "Valve Position",
+			"unique_id":           deviceID + "_valve_position",
+			"icon":                "mdi:valve",
+			"unit_of_measurement": "%",
+			"state_class":         "measurement",
+			"state_topic":         fmt.Sprintf(TopicFormatValve, srcAddr),
+			"device":              deviceInfo,
+		}
+		bytes, _ = json.Marshal(valvePayload)
+		mqttClient.Publish(valveTopic, 0, true, bytes)
+	}
+
 	publishConfigEntities(srcAddr)
 	publishWeekProfileDiscovery(srcAddr)
 	publishDeviceConfig(srcAddr)
+}
+
+// publishValvePosition publishes the valve position (0-100) retained on max/<id>/valve
+func publishValvePosition(srcAddr string, valve int) {
+	topic := fmt.Sprintf(TopicFormatValve, srcAddr)
+	slog.Debug("MQTT PUB valve position", "topic", topic, "valve", valve)
+	token := mqttClient.Publish(topic, 0, true, strconv.Itoa(valve))
+	token.Wait()
 }
 
 func publishBridgeDiscovery() {
