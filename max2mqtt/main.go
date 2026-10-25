@@ -278,8 +278,10 @@ func initializeCUL(port CulConn) {
 	// Send Initialization Commands
 	// V   = Version Check (Tests comms)
 	// Zr  = Enable MAX! Sniffer Mode (Critical)
+	// Za  = Set auto-ack address: culfw acknowledges packets sent to the gateway (as FHEM CUL_MAX does).
+	//       Without it, paired devices repeat their messages and set the rferror bit.
 	// X   = Query Credits
-	initCmds := []string{"V", "Zr", "X"}
+	initCmds := []string{"V", "Zr", "Za" + gatewayAddrHex(), "X"}
 	for _, cmd := range initCmds {
 		slog.Info("Sending Init Command", "command", cmd)
 		if _, err := port.Write([]byte(cmd + "\r")); err != nil {
@@ -457,6 +459,12 @@ func handleSerialMessage(raw string) {
 	//    - Standard: Length >= 4 (Has Setpoint/Mode/Valve) - Essential for confirmation
 	// 3. SetTemperature (0x40): Manual change on Wall Thermostat
 	touchLastSeen(pkt.SrcAddr)
+
+	// Acks sent by the CUL itself (auto-ack, see initializeCUL) are not device Acks
+	if pkt.Type == 0x02 && pkt.SrcAddr == gatewayAddrHex() {
+		slog.Debug("Ignored own auto-Ack", "dst", pkt.DstAddr)
+		return
+	}
 
 	// Any Ack (including short) confirms pending config / setpoint TX via CUL push — no polling
 	if pkt.Type == 0x02 {
@@ -975,6 +983,11 @@ func getGatewayAddress() []byte {
 		return []byte{0x12, 0x34, 0x56} // Fallback
 	}
 	return srcBytes
+}
+
+// gatewayAddrHex returns the gateway address as 6 uppercase hex digits (as used in parsed packets)
+func gatewayAddrHex() string {
+	return fmt.Sprintf("%06X", getGatewayAddress())
 }
 
 // sendCommand constructs and sends a MAX! message via CUL

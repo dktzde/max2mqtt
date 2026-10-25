@@ -10,7 +10,11 @@ The bridge talks to a CUL-FW compatible radio interface. From v1.2.0, `serial_po
 | Network | `tcp://host:port` | Raw TCP; `baud_rate` ignored |
 | Network (alias) | `telnet://host:port` | Same as TCP (maxcul-compatible URL) |
 
-After connect, the protocol is identical for both transports (`V`, `Zr`, credit `X`, `Z…` telegrams). On disconnect, the bridge reconnects automatically.
+After connect, the protocol is identical for both transports (`V`, `Zr`, `Za<gateway_id>`, credit `X`, `Z…` telegrams). On disconnect, the bridge reconnects automatically.
+
+### Auto-Ack (`Za`)
+
+On every (re)connect the bridge sends `Za<gateway_id>` to the CUL. culfw then acknowledges every packet addressed to the gateway by itself (same as FHEM `CUL_MAX`). Without this, paired devices (radiator thermostats, wall thermostats, shutter contacts) do not get an Ack for their state messages: they repeat them, which costs battery and duty cycle, and set their `rferror` bit. Acks with the gateway as source are the CUL's own auto-Acks and are ignored by the bridge.
 
 ## Time Synchronization
 

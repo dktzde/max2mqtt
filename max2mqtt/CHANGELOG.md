@@ -1,3 +1,7 @@
+## Unreleased
+
+- Set culfw auto-ack address (`Za<gateway_id>`) on CUL init, so devices get an Ack for messages sent to the gateway; ignore the CUL's own auto-Acks
+
 ## 1.3.2
 
 - Apply expected setpoint on short device Ack (FHEM AckSetTemperature) — verification no longer requires a full status payload
