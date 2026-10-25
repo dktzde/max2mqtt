@@ -440,6 +440,13 @@ func handleSerialMessage(raw string) {
 		return
 	}
 
+	// ShutterContactState (0x30): window/door contact, no climate entity
+	if pkt.Type == 0x30 {
+		touchLastSeen(pkt.SrcAddr)
+		handleShutterContact(pkt)
+		return
+	}
+
 	// Message Type Reference (from FHEM 10_MAX.pm):
 	// 0x00 = PairPing
 	// 0x02 = Ack (contains state data)

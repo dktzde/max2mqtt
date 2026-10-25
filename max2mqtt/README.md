@@ -65,6 +65,7 @@ These are the features:
     - **Number / Select / Text / Button**: Config entities (eco/comfort/min/max/offset/window/valve/display/group/week profile/disassociate/factory reset).
     - **Climate presets**: eco, comfort, boost.
     - **Binary Sensor**: Battery status (OK/Low).
+    - **Shutter Contact**: Window binary sensor (open/closed) plus battery and RF error (diagnostic), state on `max/<id>/state`.
 -   **Pairing Mode**: Trigger via MQTT (`max/bridge/pair`) to pair new devices.
 -   **Association**: Trigger via MQTT (`max/bridge/associate`) to associate radiator valves with wall thermostats.
 -   **Retained Messages**: All MQTT messages (discovery and state) are published with the `retain` flag. This ensures Home Assistant keeps entities and their last known values across bridge or HA restarts.
@@ -78,7 +79,7 @@ These are the features:
 
 ### Not covered
 - Processing live valve position / signal strength as sensors
-- Shutter contacts and eco push-buttons as first-class entities
+- Eco push-buttons as first-class entities
 - Cube/MAXLAN polling
 - fakeWT / fakeSC (external sensor simulation)
 
@@ -160,6 +161,13 @@ You can link MAX! devices together so they work as a team. For example, linking 
 |-------|-------|
 | Topic | `max/0A1B2C/associate` |
 | Payload | `0D3E4F:3` |
+
+**Example**: Link shutter contact `1A2B3C` with radiator `0A1B2C` (the thermostat then switches to its *Window Open Temperature* while the window is open):
+
+| Topic | Payload |
+|-------|---------|
+| `max/0A1B2C/associate` | `1A2B3C:4` |
+| `max/1A2B3C/associate` | `0A1B2C:1` |
 
 Use the Home Assistat UI to publish the MQTT messages.
 

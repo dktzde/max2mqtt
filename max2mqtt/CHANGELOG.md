@@ -1,3 +1,7 @@
+## Unreleased
+
+- Shutter contacts (`0x30`): window, battery and RF error binary sensors via MQTT discovery
+
 ## 1.3.2
 
 - Apply expected setpoint on short device Ack (FHEM AckSetTemperature) — verification no longer requires a full status payload

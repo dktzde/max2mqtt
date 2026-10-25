@@ -120,14 +120,17 @@ This bridge implements the following filter of message types.
     -   **Description**: Periodic status updates from radiator valves.
     -   **Why**: Accepted to monitor Battery State and confirm receipt of commands sent directly to valves.
 
+-   **Shutter Contact State (`0x30`)**:
+    -   **Description**: Sent by window/door contacts on every change. One payload byte: bits 0-1 ≠ 0 → open, bit 6 RF error, bit 7 battery low (FHEM `10_MAX.pm`).
+    -   **Why**: Published as `{"window": "open|closed", "battery": "ok|low", "rf_error": false}` retained on `max/<id>/state`; discovery creates the binary sensors *Window*, *Battery* and *RF Error* (no climate/config entities).
+    -   **Repeats**: The contact sends the same message (same counter) to the gateway and to every linked thermostat; repeats within 10 s are processed once.
+    -   **Pairing**: As for thermostats (`max/bridge/pair`). Link the contact with the thermostat(s) in both directions (see README, partner type 4), so the thermostat applies its window-open temperature.
 
 ### Ignored Message Types
 
 -   **Short Acknowledgements (`0x02`)**:
     -   **Description**: Acks with payload length &lt; 4 bytes (no full thermostat state).
     -   **Reason**: Still used to **confirm pending config TX** (Ack tracker); climate state is not updated from short Acks.
--   **Shutter Contacts (`0x30`)**:
-    -   **Reason**: Out of scope for this climate-focused bridge.
 
 ## Device Configuration
 
