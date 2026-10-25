@@ -24,6 +24,7 @@ type DeviceConfig struct {
 	GroupID            int     `json:"group_id"`
 	IsWall             bool    `json:"is_wall"`
 	IsRadiator         bool    `json:"is_radiator"`
+	IsShutter          bool    `json:"is_shutter"`
 	PresetMode         string  `json:"preset_mode"` // none | eco | comfort | boost
 }
 
@@ -108,6 +109,8 @@ func markDeviceType(deviceAddr string, pktType int) {
 		cfg.IsWall = true
 	case 0x60:
 		cfg.IsRadiator = true
+	case 0x30:
+		cfg.IsShutter = true
 	}
 }
 
@@ -238,6 +241,8 @@ func discoveryDeviceInfo(srcAddr string) map[string]string {
 		model = "MAX! Wall Thermostat"
 	} else if cfg.IsRadiator {
 		model = "MAX! Radiator Thermostat"
+	} else if cfg.IsShutter {
+		model = "MAX! Shutter Contact"
 	}
 	configMutex.RUnlock()
 	return map[string]string{
