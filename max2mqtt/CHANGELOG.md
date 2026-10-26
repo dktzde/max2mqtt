@@ -1,3 +1,10 @@
+## 1.3.4
+
+<sub>2026-10-26</sub>
+
+- **Vacation mode** for radiator and wall thermostats: `max/<id>/vacation/set` with `{"temperature": 12, "until": "2026-11-02 18:00"}` holds the temperature until that date/time, then the device returns to auto by itself (`temperature` optional, default: the device's eco temperature; `off` ends it early). SetTemperature `0x40` with the three "until" bytes, as in FHEM `10_MAX.pm`
+- Decode the vacation end date from status messages (`0x60`/`0x70`/Acks/`0x40`): `until` in `max/<id>/state` and a "Vacation Until" sensor. In vacation mode bytes 3-5 are no longer read as the actual temperature
+
 ## 1.3.3
 
 <sub>2026-10-25</sub>

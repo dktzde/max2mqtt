@@ -52,6 +52,10 @@ Who made what, newest first. Full list with dates: [CHANGELOG](CHANGELOG.md).
 - **[Dad-Ju/max2mqtt](https://github.com/Dad-Ju/max2mqtt)** (2026-10-15 to 2026-10-16): 1.2.0 to 1.3.2
 - **Original by [pwurbs/max2mqtt](https://github.com/pwurbs/max2mqtt)** (December 2025 to January 2026): 1.0.0 and 1.1.0
 
+### v1.3.4 (2026-10-26, this fork) — Vacation mode
+
+- **Vacation mode:** `max/<id>/vacation/set` with `{"temperature": 12, "until": "2026-11-02 18:00"}` holds the temperature until that date/time, then the thermostat returns to auto by itself; `off` ends it early. End date as "Vacation Until" sensor. Details in DOCS
+
 ### v1.3.3 (2026-10-25, this fork) — Auto-Ack, valve position, shutter contacts
 
 - **Auto-Ack (`Za`):** the CUL acknowledges every message sent to `gateway_id` by itself (like FHEM), so devices no longer repeat their messages or set their RF error bit, saving battery and duty cycle
@@ -110,6 +114,7 @@ These are the features:
     - **Climate**: Thermostat control with support for `temperature` (setpoint), `current_temperature` (actual), `hvac_action` (heating/idle), and `hvac_mode` (auto/heat/off).
     - **Number / Select / Text / Button**: Config entities (eco/comfort/min/max/offset/window/valve/display/group/week profile/disassociate/factory reset).
     - **Climate presets**: eco, comfort, boost.
+    - **Vacation mode**: hold a temperature until a date/time via `max/<id>/vacation/set` (see DOCS); end date as "Vacation Until" sensor.
     - **Binary Sensor**: Battery status (OK/Low), RF error (diagnostic: device cannot reach its link partner/gateway).
     - **Sensor**: Valve position in % (radiator thermostats, retained on `max/<id>/valve`).
     - **Shutter Contact**: Window binary sensor (open/closed) plus battery and RF error (diagnostic), state on `max/<id>/state`.
@@ -121,7 +126,7 @@ These are the features:
     - auto: auto
     - manual (>4.5°C): heat
     - manual (<=4.5°C): off
-    - Vacation: off
+    - Vacation: off (end date in the "Vacation Until" sensor)
     - Boost: heat
 
 ### Not covered

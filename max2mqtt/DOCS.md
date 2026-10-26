@@ -160,6 +160,30 @@ There is no “query all config” over CUL. After a bridge restart, retained MQ
 
 Presets on the climate entity: **eco**, **comfort**, **boost** (apply stored eco/comfort temps or boost mode via `0x40`). HVAC modes remain `auto` / `heat` / `off`.
 
+### Vacation mode
+
+Holds a temperature until a date/time; afterwards the thermostat returns to auto (week program) by itself, without the bridge.
+
+| Topic | Payload | Effect |
+|-------|---------|--------|
+| `max/<id>/vacation/set` | `{"temperature": 12, "until": "2026-11-02 18:00"}` | Vacation mode, 12 °C until 2 Nov 2026 18:00 |
+| `max/<id>/vacation/set` | `{"until": "2026-11-02 18:00"}` | Same with the device's eco temperature |
+| `max/<id>/vacation/set` | `off` | End early: auto with the week program temperature |
+
+- `until` is local time as `YYYY-MM-DD HH:MM` (also `T` as separator and seconds, as Home Assistant `input_datetime` states). The device only knows full and half hours: minutes are rounded down to `:00`/`:30`. It must be in the future.
+- `temperature`: 4.5–30.5 °C, step 0.5.
+- The device needs the correct time (time sync, see above).
+- In vacation mode `max/<id>/state` contains `"mode": "vacation"` and `"until": "2026-11-02 18:00"`; the climate entity shows HVAC mode `off` and the "Vacation Until" sensor the end date. A new setpoint, preset or HVAC mode from Home Assistant also ends vacation mode.
+
+Example Home Assistant script action:
+
+```yaml
+action: mqtt.publish
+data:
+  topic: max/0A1B2C/vacation/set
+  payload: '{"temperature": 12, "until": "{{ states(''input_datetime.vacation_end'') }}"}'
+```
+
 ### ConfigTemperatures (`0x11`)
 
 | Entity | Range | Notes |
