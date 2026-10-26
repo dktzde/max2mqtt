@@ -44,16 +44,22 @@ Additionally, I was curious to see if I could use AI to help me with the develop
 
 This add-on is a lightweight Go-based bridge connecting a CUL (USB serial or network TCP, 868MHz MAX! protocol) to Home Assistant via MQTT. It focuses on usage of an existing MAX! installation with wall thermostats and radiator valves, only supporting the really required functions to be used with Home Assistant. It's not intended as a full replacement of MAX! Cube or the implementation contained in FHEM.
 
-## What's new in this fork
+## History
 
-### v1.3.3 (dktzde fork) — Auto-Ack, valve position, shutter contacts
+Who made what, newest first. Full list with dates: [CHANGELOG](CHANGELOG.md).
+
+- **This fork, [dktzde/max2mqtt](https://github.com/dktzde/max2mqtt)** (since 2026-10-24): 1.3.3 and later
+- **[Dad-Ju/max2mqtt](https://github.com/Dad-Ju/max2mqtt)** (2026-10-15 to 2026-10-16): 1.2.0 to 1.3.2
+- **Original by [pwurbs/max2mqtt](https://github.com/pwurbs/max2mqtt)** (December 2025 to January 2026): 1.0.0 and 1.1.0
+
+### v1.3.3 (2026-10-25, this fork) — Auto-Ack, valve position, shutter contacts
 
 - **Auto-Ack (`Za`):** the CUL acknowledges every message sent to `gateway_id` by itself (like FHEM), so devices no longer repeat their messages or set their RF error bit, saving battery and duty cycle
 - **Valve position** sensor (0–100 %) for each radiator thermostat, retained on `max/<id>/valve`
 - **RF error** diagnostic binary sensor (`rf_error` in `max/<id>/state`)
 - **Shutter contacts** (`0x30`): window open/closed, battery and RF error binary sensors; link them with a radiator thermostat, see [Device Association](#device-association-linking-devices)
 
-### v1.3.0 — Device configuration in Home Assistant
+### v1.3.0 (2026-10-16, Dad-Ju) — Device configuration in Home Assistant
 
 Exposes FHEM-compatible settings as MQTT discovery entities (`entity_category: config`), with **Ack/push confirmation** (no polling):
 
@@ -63,7 +69,7 @@ Exposes FHEM-compatible settings as MQTT discovery entities (`entity_category: c
 - **Other:** display mode, group ID, disassociate partner, factory reset, week profile JSON
 - Retained state on `max/<id>/config`; UI updates when the device Acks over CUL
 
-### v1.2.0 — Network CUL
+### v1.2.0 (2026-10-15, Dad-Ju) — Network CUL
 
 | Transport | `serial_port` value | `baud_rate` |
 |-----------|---------------------|-------------|
@@ -130,7 +136,7 @@ Prefer Home Assistant schedules for day-to-day heating; device week profile JSON
 
 1.  Prepare the Add-on:
     - Either copy this directory to your Home Assistant `addons/local/max2mqtt` folder.
-    - Or use the Add-on Store in Home Assistant: Add the repository `https://github.com/dktzde/max2mqtt` (this fork: TCP CUL support plus Auto-Ack, valve position and shutter contacts). Upstream: `https://github.com/Dad-Ju/max2mqtt`, originally `https://github.com/pwurbs/max2mqtt`.
+    - Or use the Add-on Store in Home Assistant: Add the repository `https://github.com/dktzde/max2mqtt` (this fork: Auto-Ack, valve position and shutter contacts, on top of Dad-Ju's network CUL support and device configuration). Upstream: `https://github.com/Dad-Ju/max2mqtt`, originally `https://github.com/pwurbs/max2mqtt`.
 2.  Navigate to the Add-on Store, either the Local addon-ons section or the configured repository.
 3.  Install **MAX! to MQTT Bridge**.
 4.  Configure the parameters like described below – set `gateway_id` first, see [Start here](#start-here-gateway_id).
