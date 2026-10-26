@@ -2,10 +2,11 @@
 
 Handover file for the maintainer and for Claude Code sessions working on this repository. **Read this first, and update it after every step** (state, decisions, next steps), so the next session can continue without the chat history.
 
-Last updated: 2026-10-26 (STATUS.md added, history with dates)
+Last updated: 2026-10-26 (1.3.4: vacation mode)
 
 ## Current state
 
+- **1.3.4 (2026-10-26)** on our `main`: vacation mode from branch `vacation-mode` (`1efaa13`, from `upstream/main`): `max/<id>/vacation/set` with `{"temperature": 12, "until": "YYYY-MM-DD HH:MM"}` (temperature optional, default eco; `off` ends it), SetTemperature `0x40` with the three until bytes (FHEM `10_MAX.pm`); `until` decoded into `max/<id>/state` and a "Vacation Until" sensor; in vacation mode bytes 3-5 are no longer read as actual temperature. Test `vacation_test.go` (encoding checked against the example `9D0B..` in Bouni/max-cube-protocol `S-Message.md`). `go vet`/`go test`/`go build` passed on the branch and on the merge. Not installed on the device yet, not checked with a real thermostat.
 - **1.3.3 installed on the device since 2026-10-25, not started yet** (the add-on is stopped). Not checked yet: anything with a real CUL. Before the first start, `gateway_id` must be the RF address of the old MAX! Cube, so the devices need no re-pairing (guide at the top of `max2mqtt/README.md`).
 - **1.3.3 (2026-10-25)** is our `main`: Dad-Ju's 1.3.2 plus three feature branches, merged with merge commits:
   - `culfw-auto-ack` (`8aa701b`): `Za<gateway_id>` on CUL init, own auto-Acks ignored. Test `autoack_test.go`.
@@ -18,8 +19,9 @@ Last updated: 2026-10-26 (STATUS.md added, history with dates)
 
 1. Find the Cube's RF address over the radio (`log_level: debug`, `dst=` of a thermostat or window message), set `gateway_id`, start the add-on.
 2. Test with the real CUL: valve position against the thermostat display, window open/closed and battery at a shutter contact, no repeated messages after Auto-Ack, a setpoint change from Home Assistant confirmed by Ack.
-3. Write the result here with date and time ("1.3.3 on the device since …, checked …").
-4. After the test and the maintainer's go-ahead: three separate PRs to `Dad-Ju/max2mqtt` from the three branches; Auto-Ack also to `pwurbs/max2mqtt` on a new branch from `pwurbs/main` (that tree has no Ack block yet, so only `Za` plus ignoring own auto-Acks).
+3. Test vacation mode at one radiator thermostat: set a date 1-2 hours ahead, check the display (suitcase symbol, end date), the "Vacation Until" sensor, then the return to auto at the end time; also `off`.
+4. Write the result here with date and time ("1.3.4 on the device since …, checked …").
+5. After the test and the maintainer's go-ahead: four separate PRs to `Dad-Ju/max2mqtt` from the four branches; Auto-Ack also to `pwurbs/max2mqtt` on a new branch from `pwurbs/main` (that tree has no Ack block yet, so only `Za` plus ignoring own auto-Acks).
 
 ## Known issues and backlog
 
@@ -39,12 +41,15 @@ Last updated: 2026-10-26 (STATUS.md added, history with dates)
 - **Language:** code, docs, changelog, commits and PR texts in English. Replies to the maintainer in German, in plain language.
 - No private data (IP addresses, real RF addresses) in this public repository; examples use placeholders such as `0A1B2C`.
 
+- **Protocol references:** FHEM `10_MAX.pm` (device messages, `desiredTemperature … until`) and `14_CUL_MAX.pm` (CUL side) from [fhem/fhem-mirror](https://github.com/fhem/fhem-mirror) (`fhem/FHEM/`); Cube LAN protocol incl. byte layouts in [Bouni/max-cube-protocol](https://github.com/Bouni/max-cube-protocol). Check there before guessing a message layout.
+
 ## Key files
 
 - `max2mqtt/config.yaml`, `max2mqtt/Dockerfile`: add-on version (both), options, build
 - `max2mqtt/CHANGELOG.md`: shown by Home Assistant in the update dialog
 - `max2mqtt/main.go`: CUL init (`initializeCUL`), message handling, decoding, MQTT discovery
 - `max2mqtt/shutter_contact.go`: shutter contacts
+- `max2mqtt/vacation.go`: vacation mode (command, until encoding/decoding)
 - `max2mqtt/*_test.go`: unit tests (`go test ./...` in `max2mqtt/`)
 - `README.md`, `max2mqtt/README.md`, `max2mqtt/DOCS.md`: repository page, add-on overview, Documentation tab
 - `repository.yaml`: add-on store entry of this fork
