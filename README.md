@@ -28,13 +28,22 @@ Additionally, I was curious to see if I could use AI to help me with the develop
 
 This add-on is a lightweight Go-based bridge connecting a CUL (USB serial or network TCP, 868MHz MAX! protocol) to Home Assistant via MQTT. It focuses on usage of an existing MAX! installation with wall thermostats and radiator valves, only supporting the really required functions to be used with Home Assistant. It's not intended as a full replacement of MAX! Cube or the implementation contained in FHEM.
 
-## What's new in this fork
+## History
 
-Built on [Dad-Ju/max2mqtt](https://github.com/Dad-Ju/max2mqtt), originally [pwurbs/max2mqtt](https://github.com/pwurbs/max2mqtt):
+Who made what, newest first. Full list with dates: [CHANGELOG](max2mqtt/CHANGELOG.md).
 
-- **v1.2.0** — Network CUL: `serial_port: tcp://host:port` (baud unused)
-- **v1.3.0** — Full device configuration in HA (temps, valve, presets, week profile) with CUL Ack/push confirmation (no polling)
-- **v1.3.3 (dktzde fork)** — Auto-Ack (`Za`), valve position sensor, RF error sensor, shutter contacts (window/battery/RF error)
+**This fork, [dktzde/max2mqtt](https://github.com/dktzde/max2mqtt)** (since 2026-10-24):
+
+- **v1.3.3** (2026-10-25) — Auto-Ack (`Za`), valve position sensor, RF error sensor, shutter contacts (window/battery/RF error)
+
+**[Dad-Ju/max2mqtt](https://github.com/Dad-Ju/max2mqtt)** (2026-10-15 to 2026-10-16):
+
+- **v1.2.0** (2026-10-15) — Network CUL: `serial_port: tcp://host:port` (baud unused)
+- **v1.3.0 to v1.3.2** (2026-10-16) — Full device configuration in HA (temps, valve, presets, week profile) with CUL Ack/push confirmation (no polling), SetTemperature fixes
+
+**Original by [pwurbs/max2mqtt](https://github.com/pwurbs/max2mqtt)** (December 2025 to January 2026):
+
+- **v1.0.0 and v1.1.0** — the bridge itself: CUL to MQTT, wall and radiator thermostats, duty cycle management, pairing and association
 
 ```yaml
 serial_port: "tcp://192.168.1.50:2323"
