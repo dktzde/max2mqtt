@@ -34,6 +34,7 @@ Who made what, newest first. Full list with dates: [CHANGELOG](max2mqtt/CHANGELO
 
 **This fork, [dktzde/max2mqtt](https://github.com/dktzde/max2mqtt)** (since 2026-10-24):
 
+- **v1.3.4** (2026-10-26) — Vacation mode (temperature until date/time) via `max/<id>/vacation/set`, "Vacation Until" sensor
 - **v1.3.3** (2026-10-25) — Auto-Ack (`Za`), valve position sensor, RF error sensor, shutter contacts (window/battery/RF error)
 
 **[Dad-Ju/max2mqtt](https://github.com/Dad-Ju/max2mqtt)** (2026-10-15 to 2026-10-16):
