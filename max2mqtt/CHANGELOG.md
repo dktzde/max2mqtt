@@ -1,11 +1,19 @@
-## 1.3.3 (dktzde fork)
+## 1.3.3
+
+<sub>2026-10-25</sub>
 
 - Set culfw auto-ack address (`Za<gateway_id>`) on CUL init, so devices get an Ack for messages sent to the gateway; ignore the CUL's own auto-Acks
 - Valve position sensor (0-100 %) for radiator thermostats from ThermostatState (`0x60`) and their Acks, retained on `max/<id>/valve`
 - RF error diagnostic binary sensor from status bit 6 (`rf_error` in `max/<id>/state`)
 - Shutter contacts (`0x30`): window, battery and RF error binary sensors via MQTT discovery
 
+---
+
+**Versions 1.2.0 to 1.3.2 (October 2026) are by [Dad-Ju/max2mqtt](https://github.com/Dad-Ju/max2mqtt).** This fork ([dktzde/max2mqtt](https://github.com/dktzde/max2mqtt), since 2026-10-24) continues from 1.3.3. Dates are taken from the git history.
+
 ## 1.3.2
+
+<sub>2026-10-16</sub>
 
 - Apply expected setpoint on short device Ack (FHEM AckSetTemperature) — verification no longer requires a full status payload
 - Send WakeUp (`0xF1`) before SetTemperature/mode when the device has been quiet
@@ -13,11 +21,15 @@
 
 ## 1.3.1
 
+<sub>2026-10-16</sub>
+
 - Fix SetTemperature/mode TX: use learned room `groupId` with flag `0x04` (FHEM/Cube behaviour)
 - Do not drop TX when credit query times out; send with warning instead of silently restoring HA state
 - Normalize device addresses to uppercase for MQTT commands
 
 ## 1.3.0
+
+<sub>2026-10-16</sub>
 
 ### Features
 - Full device configuration via HA MQTT discovery (`entity_category: config`)
@@ -37,11 +49,19 @@
 
 ## 1.2.0
 
+<sub>2026-10-15</sub>
+
 - **Network CUL (TCP):** `serial_port` accepts `tcp://host:port` or `telnet://host:port` (raw TCP; baud rate ignored)
 - USB serial path unchanged; reconnect loop works for both transports
 - Docs: Network CUL section in DOCS.md / README; Dockerfile strips Windows CRLF on `run.sh`
 
+---
+
+**Versions 1.0.0 and 1.1.0 (December 2025 to January 2026) are the original add-on by [pwurbs/max2mqtt](https://github.com/pwurbs/max2mqtt).** Dad-Ju's fork continues from 1.2.0.
+
 ## 1.1.0
+
+<sub>2025-12-20 to 2026-01-15 (changes kept this version number)</sub>
 
 - Managing the duty cycle
 - Improved RX packet management
@@ -49,5 +69,7 @@
 - Added TX validation
 
 ## 1.0.0
+
+<sub>before 2025-12-20 (not in the public git history)</sub>
 
 - Initial release
