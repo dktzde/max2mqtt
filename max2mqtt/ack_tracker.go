@@ -32,6 +32,7 @@ type PendingSetpoint struct {
 	Temperature float64
 	Mode        string
 	HVACMode    string
+	Until       string // vacation end "YYYY-MM-DD HH:MM", empty for other modes
 }
 
 type AckTracker struct {
@@ -78,6 +79,17 @@ func (a *AckTracker) TrackSetpoint(deviceID string, temp float64, mode, hvacMode
 	slog.Debug("Tracking pending SetTemperature", "device", deviceID, "temp", temp, "mode", mode, "hvac", hvacMode)
 }
 
+// TrackVacation remembers an expected vacation state (temperature until a date/time) until the device Acks.
+func (a *AckTracker) TrackVacation(deviceID string, temp float64, until string) {
+	if a == nil {
+		return
+	}
+	a.mutex.Lock()
+	a.pendingSetTemp[deviceID] = &PendingSetpoint{Temperature: temp, Mode: "vacation", HVACMode: "off", Until: until}
+	a.mutex.Unlock()
+	slog.Debug("Tracking pending vacation", "device", deviceID, "temp", temp, "until", until)
+}
+
 // ApplySetpointAck applies pending setpoint on any 0x02 Ack from the device (FHEM AckSetTemperature).
 // Returns true if a pending setpoint was applied.
 func (a *AckTracker) ApplySetpointAck(deviceID string) bool {
@@ -91,7 +103,7 @@ func (a *AckTracker) ApplySetpointAck(deviceID string) bool {
 		return false
 	}
 	delete(a.pendingSetTemp, deviceID)
-	temp, mode, hvac := pending.Temperature, pending.Mode, pending.HVACMode
+	temp, mode, hvac, until := pending.Temperature, pending.Mode, pending.HVACMode, pending.Until
 	a.mutex.Unlock()
 
 	slog.Info("SetTemperature Ack — applying expected state", "device", deviceID, "temp", temp, "mode", mode)
@@ -109,6 +121,7 @@ func (a *AckTracker) ApplySetpointAck(deviceID string) bool {
 	if hvac != "" {
 		existing.HVACMode = hvac
 	}
+	existing.Until = until
 	if existing.Mode == "boost" {
 		existing.PresetMode = "boost"
 	} else if existing.PresetMode == "boost" {

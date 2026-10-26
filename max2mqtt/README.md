@@ -64,6 +64,7 @@ These are the features:
     - **Climate**: Thermostat control with support for `temperature` (setpoint), `current_temperature` (actual), `hvac_action` (heating/idle), and `hvac_mode` (auto/heat/off).
     - **Number / Select / Text / Button**: Config entities (eco/comfort/min/max/offset/window/valve/display/group/week profile/disassociate/factory reset).
     - **Climate presets**: eco, comfort, boost.
+    - **Vacation mode**: hold a temperature until a date/time via `max/<id>/vacation/set` (see DOCS); end date as "Vacation Until" sensor.
     - **Binary Sensor**: Battery status (OK/Low).
 -   **Pairing Mode**: Trigger via MQTT (`max/bridge/pair`) to pair new devices.
 -   **Association**: Trigger via MQTT (`max/bridge/associate`) to associate radiator valves with wall thermostats.
@@ -73,7 +74,7 @@ These are the features:
     - auto: auto
     - manual (>4.5°C): heat
     - manual (<=4.5°C): off
-    - Vacation: off
+    - Vacation: off (end date in the "Vacation Until" sensor)
     - Boost: heat
 
 ### Not covered

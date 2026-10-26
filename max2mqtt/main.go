@@ -210,6 +210,7 @@ func setupMQTT() {
 		c.Subscribe("max/+/set", 0, handleMQTTCommand)
 		c.Subscribe("max/+/mode/set", 0, handleMQTTModeCommand)
 		c.Subscribe("max/+/preset/set", 0, handleMQTTPresetCommand)
+		c.Subscribe("max/+/vacation/set", 0, handleMQTTVacation)
 		c.Subscribe("max/bridge/pair", 0, handleMQTTPair)
 		c.Subscribe("max/+/eco_temp/set", 0, handleMQTTEcoTemp)
 		c.Subscribe("max/+/comfort_temp/set", 0, handleMQTTComfortTemp)
@@ -522,6 +523,12 @@ func updateDeviceState(srcAddr string, newData *MaxDeviceData) {
 
 	if newData.Mode != "" {
 		existing.Mode = newData.Mode
+		if newData.Mode != "vacation" {
+			existing.Until = ""
+		}
+	}
+	if newData.Until != "" {
+		existing.Until = newData.Until
 	}
 	if newData.HVACMode != "" {
 		existing.HVACMode = newData.HVACMode
@@ -577,6 +584,8 @@ type MaxDeviceData struct {
 	HVACAction string `json:"hvac_action"`
 	Battery    string `json:"battery"`
 	PresetMode string `json:"preset_mode"`
+	// Until: end of vacation mode as "YYYY-MM-DD HH:MM" (device local time), only in vacation mode
+	Until string `json:"until,omitempty"`
 }
 
 // convert pointer to string for appropriate logging
@@ -638,6 +647,11 @@ func decodeSetTemperature(payload []byte) *MaxDeviceData {
 	// Temperature from bits 0-5
 	data.Temperature = float64(byte0&0x3F) / 2.0
 
+	// Bytes 1-3: vacation end date/time
+	if modeBits == 0x02 && len(payload) >= 4 {
+		data.Until = decodeUntil(payload[1:4])
+	}
+
 	// Special case: Off (4.5C in manual mode)
 	if data.Mode == "manual" && data.Temperature <= 4.5 {
 		data.HVACMode = "off"
@@ -681,8 +695,13 @@ func decodeThermostatStatus(pktType int, payload []byte) *MaxDeviceData {
 		data.HVACMode = "off"
 	}
 
+	// Bytes 3-5: vacation end date/time in vacation mode, otherwise
 	// Bytes 3-4: Actual Temperature (if present)
-	if len(payload) >= 5 {
+	if modeBits == 0x02 {
+		if len(payload) >= 6 {
+			data.Until = decodeUntil(payload[3:6])
+		}
+	} else if len(payload) >= 5 {
 		rawTemp := int(payload[3]&0x01)<<8 | int(payload[4])
 		actualTemp := float64(rawTemp) / 10.0
 		data.CurrentTemperature = &actualTemp
@@ -755,6 +774,18 @@ func sendDiscovery(srcAddr string) {
 	}
 	bytes, _ = json.Marshal(battPayload)
 	mqttClient.Publish(battTopic, 0, true, bytes)
+
+	untilTopic := fmt.Sprintf("homeassistant/sensor/%s_vacation_until/config", deviceID)
+	untilPayload := map[string]interface{}{
+		"name":           "Vacation Until",
+		"unique_id":      deviceID + "_vacation_until",
+		"icon":           "mdi:airplane",
+		"state_topic":    fmt.Sprintf(TopicFormatState, srcAddr),
+		"value_template": "{{ value_json.get('until') or 'None' }}",
+		"device":         deviceInfo,
+	}
+	bytes, _ = json.Marshal(untilPayload)
+	mqttClient.Publish(untilTopic, 0, true, bytes)
 
 	publishConfigEntities(srcAddr)
 	publishWeekProfileDiscovery(srcAddr)
