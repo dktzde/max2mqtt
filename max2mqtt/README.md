@@ -52,6 +52,13 @@ Who made what, newest first. Full list with dates: [CHANGELOG](CHANGELOG.md).
 - **[Dad-Ju/max2mqtt](https://github.com/Dad-Ju/max2mqtt)** (2026-10-15 to 2026-10-16): 1.2.0 to 1.3.2
 - **Original by [pwurbs/max2mqtt](https://github.com/pwurbs/max2mqtt)** (December 2025 to January 2026): 1.0.0 and 1.1.0
 
+### v1.3.5 (2026-10-28, this fork) — Boost, preset and auto mode fixes
+
+- **Preset after boost:** the climate preset follows the device status: a boost that ends on the device (or an eco/comfort setpoint changed at the wheel) resets the preset to `none` instead of keeping `boost` until the next command from Home Assistant
+- **Boost setpoint:** boost is sent with temperature 0 (as FHEM does) and the cached setpoint is kept, so `heat`, preset `none` or `auto` after a boost from Home Assistant no longer set 30 °C
+- **Actual temperature 0:** status messages without a new measurement (actual temperature 0, or the rare values below 1 °C) keep the last measured value instead of showing 0 °C and `heating`
+- **Auto mode:** HVAC mode `auto` follows the week program (sent with temperature 0, like FHEM and the MAX! Cube) instead of holding the current setpoint until the next switch point
+
 ### v1.3.4 (2026-10-26, this fork) — Vacation mode
 
 - **Vacation mode:** `max/<id>/vacation/set` with `{"temperature": 12, "until": "2026-11-02 18:00"}` holds the temperature until that date/time, then the thermostat returns to auto by itself; `off` ends it early. End date as "Vacation Until" sensor. Details in DOCS
