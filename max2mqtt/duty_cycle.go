@@ -12,7 +12,6 @@ import (
 // - Duty Cycle: used part of the CUL's credit budget in %, like the MAX! Cube's duty cycle value
 const (
 	creditsStateTopic = "max/bridge/credits"
-	culMaxCredits     = 900
 	creditPollPeriod  = time.Minute
 )
 
@@ -29,13 +28,13 @@ var (
 
 // dutyCycleFromCredits returns the used part of the credit budget in percent
 func dutyCycleFromCredits(credits int) int {
-	if credits >= culMaxCredits {
+	if credits >= culCreditMax {
 		return 0
 	}
 	if credits <= 0 {
 		return 100
 	}
-	return (culMaxCredits - credits) * 100 / culMaxCredits
+	return (culCreditMax - credits) * 100 / culCreditMax
 }
 
 // publishCredits publishes the credit report when it changed

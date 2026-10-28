@@ -1,3 +1,10 @@
+## 1.4.3
+
+<sub>2026-10-28</sub>
+
+- **Week profile messages are never discarded** for lack of duty cycle credits (before: after 120 minutes); the "discarded" notification is gone, the notification after 60 minutes stays
+- **Credit reserve for direct commands:** week profile messages are only sent while the credits are above `duty_cycle_min_credits` plus `week_profile_reserve_percent` (new option, default 20 %) of the CUL's maximum of 900 credits, i.e. 380 with the defaults, so setpoint, mode and config changes can still be sent at once
+
 ## 1.4.2
 
 <sub>2026-10-28</sub>
