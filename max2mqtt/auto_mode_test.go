@@ -10,7 +10,7 @@ func TestAutoFollowsWeekProgram(t *testing.T) {
 	initAckTracker()
 	const dev = "0A1B2C"
 	// Manual 21 °C
-	updateDeviceState(dev, decodeThermostatStatus(0x60, []byte{0x01, 0, 42, 0, 200}))
+	updateDeviceState(dev, decodeThermostatStatus(0x60, []byte{0x01, 0, 42, 0, 200}, true))
 	touchLastSeen(dev)
 
 	handleMQTTModeCommand(nil, fakeMessage{topic: "max/" + dev + "/mode/set", payload: "auto"})

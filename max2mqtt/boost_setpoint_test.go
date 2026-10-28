@@ -22,7 +22,7 @@ func TestBoostKeepsSetpoint(t *testing.T) {
 	resetTestState()
 	const dev = "0A1B2C"
 	// Manual 6.5 °C
-	updateDeviceState(dev, decodeThermostatStatus(0x60, []byte{0x01, 0, 13, 0, 200}))
+	updateDeviceState(dev, decodeThermostatStatus(0x60, []byte{0x01, 0, 13, 0, 200}, true))
 	touchLastSeen(dev)
 
 	handleMQTTPresetCommand(nil, fakeMessage{topic: "max/" + dev + "/preset/set", payload: "boost"})
