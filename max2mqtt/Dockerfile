@@ -32,7 +32,7 @@ LABEL \
     io.hass.description="Bridge for MAX! Wall Thermostats via CUL-Stick to MQTT" \
     io.hass.arch="aarch64|amd64" \
     io.hass.type="addon" \
-    io.hass.version="1.4.2"
+    io.hass.version="1.4.3"
 
 WORKDIR /app
 

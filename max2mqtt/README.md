@@ -53,6 +53,11 @@ Who made what, newest first. Full list with dates: [CHANGELOG](CHANGELOG.md).
 - **[Dad-Ju/max2mqtt](https://github.com/Dad-Ju/max2mqtt)** (2026-10-15 to 2026-10-16): 1.2.0 to 1.3.2
 - **Original by [pwurbs/max2mqtt](https://github.com/pwurbs/max2mqtt)** (December 2025 to January 2026): 1.0.0 and 1.1.0
 
+### v1.4.3 (2026-10-28, this fork) — Week profile: never discarded, credit reserve
+
+- **Week profile messages are never discarded** for lack of duty cycle credits (before: after 120 minutes); the "discarded" notification is gone, the notification after 60 minutes stays
+- **Credit reserve for direct commands:** week profile messages are only sent while the credits are above `duty_cycle_min_credits` plus `week_profile_reserve_percent` (new option, default 20 %) of the CUL's maximum of 900 credits, i.e. 380 with the defaults, so setpoint, mode and config changes can still be sent at once
+
 ### v1.4.2 (2026-10-28, this fork) — Week profile: wait 120 minutes, notification after 60
 
 - Week profile messages wait up to 120 minutes (before: 60) for duty cycle credits
@@ -79,7 +84,7 @@ This release makes the bridge a drop-in replacement for the MAX! Cube integratio
 
 ### v1.3.6 (2026-10-28, this fork) — Duty cycle and availability
 
-- **Wait for duty cycle credits:** a command that finds too few credits (or a busy CUL queue) is no longer dropped at once; the bridge queries again every 15 s and sends it when there are enough, until `command_timeout`. Week profile messages wait up to 120 minutes as a bulk transfer (Home Assistant notification after 60 minutes) and let setpoint, mode and config commands go first
+- **Wait for duty cycle credits:** a command that finds too few credits (or a busy CUL queue) is no longer dropped at once; the bridge queries again every 15 s and sends it when there are enough, until `command_timeout`. Week profile messages are a bulk transfer: never discarded, they let setpoint, mode and config commands go first and keep a credit reserve for them (`week_profile_reserve_percent`); Home Assistant notification after 60 minutes of waiting
 - **Availability:** `max/bridge/status` (`online`/`offline`, MQTT last will, lost CUL connection, shutdown); all entities use it and become unavailable instead of showing old values
 - **Duty cycle sensors:** "Duty Cycle" (%) and "TX Credits" on the bridge device, from the CUL credit report polled every minute
 

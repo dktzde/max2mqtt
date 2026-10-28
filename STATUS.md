@@ -2,12 +2,13 @@
 
 Handover file for the maintainer and for Claude Code sessions working on this repository. **Read this first, and update it after every step** (state, decisions, next steps), so the next session can continue without the chat history.
 
-Last updated: 2026-10-28 (1.4.2: week profile waits 120 minutes, notification after 60)
+Last updated: 2026-10-28 (1.4.3: week profile never discarded, credit reserve)
 
 ## Current state
 
-- **1.4.2 (2026-10-28)** on our `main`: week profile messages wait up to 120 minutes (`bulkCommandTimeout`, commit on `tx-wait-for-credits`); after 60 minutes (`bulkNotifyAfter`) a persistent Home Assistant notification per device (`max2mqtt_week_profile_<id>`), removed when the transfer is done, replaced by "discarded" after the timeout. Branch `week-profile-wait-notification` (`ha_notify.go`) starts from `tx-wait-for-credits`, not from `upstream/main`. It calls `persistent_notification` through the Supervisor Core API, so `config.yaml` now has `homeassistant_api: true`; without `SUPERVISOR_TOKEN` it only logs.
-- **1.4.1 (2026-10-28)** on our `main`: week profile messages (bulk queue) wait up to 60 minutes instead of 30 for duty cycle credits (`bulkCommandTimeout`); extra commit on `tx-wait-for-credits`.
+- **1.4.3 (2026-10-28)** on our `main`: week profile messages (bulk queue) are never dropped (no `bulkCommandTimeout` any more) and are only sent while the credits are above `duty_cycle_min_credits` + `week_profile_reserve_percent` (new option, default 20) % of `culCreditMax` (900), i.e. 380 by default, so direct commands keep a reserve. Commit on `tx-wait-for-credits`, merged into `week-profile-wait-notification` (the "discarded" notification is gone). `culCreditMax` in `transmission_manager.go` replaces `culMaxCredits` of `duty_cycle.go` on our `main`.
+- **1.4.2 (2026-10-28)**: week profile messages waited up to 120 minutes (replaced in 1.4.3); after 60 minutes (`bulkNotifyAfter`) a persistent Home Assistant notification per device (`max2mqtt_week_profile_<id>`), removed when the transfer is done. Branch `week-profile-wait-notification` (`ha_notify.go`) starts from `tx-wait-for-credits`, not from `upstream/main`. It calls `persistent_notification` through the Supervisor Core API, so `config.yaml` now has `homeassistant_api: true`; without `SUPERVISOR_TOKEN` it only logs.
+- **1.4.1 (2026-10-28)**: week profile messages waited up to 60 minutes instead of 30 (replaced in 1.4.2 and 1.4.3).
 - **1.4.0 (2026-10-28)** on our `main`: the bridge replaces Home Assistant's MAX! Cube integration (same climate modes, presets and attributes; only `maxcube.set_programme` becomes the MQTT topic `max/<id>/programme/set`). Branches from our `main` (they need this fork's valve/vacation code): `persist-device-data` (`/data/devices.json`), `cube-compatible-attributes` (`max/<id>/attributes`, valve based `hvac_action`), `cube-compatible-presets` (comfort/eco/Window Open/On/boost, `none` ends a boost). Migration guide in `max2mqtt/DOCS.md` ("Migrating from the MAX! Cube integration"). A smoke run of the binary against a fake CUL over TCP (no MQTT) decoded state and boost and wrote `devices.json`.
 - **1.3.5 to 1.3.7 (2026-10-28)**: fixes from a review against the Cube integration, each a branch from `upstream/main` with one commit and a test, so upstream can take them one by one:
   - 1.3.5: `fix-preset-after-boost`, `fix-boost-setpoint` (boost with temperature 0, no 30 °C setpoint), `fix-zero-actual-temperature`, `fix-auto-week-program` (auto = temperature 0)
@@ -21,14 +22,15 @@ Last updated: 2026-10-28 (1.4.2: week profile waits 120 minutes, notification af
 
 ## Next steps
 
-1. Update the add-on in Home Assistant to 1.4.2 (accept the new Home Assistant API permission) (with backup), set `serial_port: tcp://<CUN>:2323`, MQTT user/password, `gateway_id` = Cube RF address (find it over the radio: `log_level: debug`, `dst=`), start it.
+1. Update the add-on in Home Assistant to 1.4.3 (accept the new Home Assistant API permission) (with backup), set `serial_port: tcp://<CUN>:2323`, MQTT user/password, `gateway_id` = Cube RF address (find it over the radio: `log_level: debug`, `dst=`), start it.
 2. Import config and week program per device from the Cube integration's last attributes (DOCS migration guide), rename the new entities to the old Cube entity IDs.
-3. Test with the real CUL: valve position vs. display, window contact, no repeated messages after Auto-Ack, setpoint confirmed by Ack, boost from HA and from the device (preset returns to none), `none` after boost, auto follows the program, duty cycle sensor, availability when the CUN is unplugged, restart keeps the mode, a week profile day (one message), week profile notification (e.g. with a low `duty_cycle_min_credits` test or many profiles at once), vacation 1-2 hours ahead and `off`.
-4. Write the result here with date and time ("1.4.2 on the device since …, checked …").
+3. Test with the real CUL: valve position vs. display, window contact, no repeated messages after Auto-Ack, setpoint confirmed by Ack, boost from HA and from the device (preset returns to none), `none` after boost, auto follows the program, duty cycle sensor, availability when the CUN is unplugged, restart keeps the mode, a week profile day (one message), week profile notification and credit reserve (e.g. many profiles at once: a setpoint change still goes out at once), vacation 1-2 hours ahead and `off`.
+4. Write the result here with date and time ("1.4.3 on the device since …, checked …").
 5. After the test and the maintainer's go-ahead: one PR per branch to `Dad-Ju/max2mqtt` (the `upstream/main` based ones first); Auto-Ack also to `pwurbs/max2mqtt` on a new branch from `pwurbs/main`.
 
 ## Known issues and backlog
 
+- The week profile queue is not persisted: after a restart of the add-on, waiting messages are lost and a "waiting" notification stays until it is dismissed by hand.
 - A radiator thermostat only reports when something changes, so the valve position arrives irregularly and `0 %` may stay for hours.
 - Week profile and config values cannot be read from the devices; they are known only after an import or after the bridge sent them.
 - TimeInformation for foreign devices (see above).
