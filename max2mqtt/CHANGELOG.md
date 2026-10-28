@@ -1,3 +1,7 @@
+## Unreleased
+
+- Bridge availability on `max/bridge/status` (`online`/`offline`, MQTT last will, lost CUL connection, shutdown); all discovered entities use it and become unavailable instead of showing old values
+
 ## 1.3.2
 
 - Apply expected setpoint on short device Ack (FHEM AckSetTemperature) — verification no longer requires a full status payload

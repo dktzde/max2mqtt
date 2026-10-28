@@ -150,6 +150,5 @@ func publishWeekProfileDiscovery(srcAddr string) {
 		"mode":            "text",
 		"device":          discoveryDeviceInfo(srcAddr),
 	}
-	bytes, _ := json.Marshal(payload)
-	mqttClient.Publish(topic, 0, true, bytes)
+	publishDiscovery(topic, payload)
 }

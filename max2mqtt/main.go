@@ -94,6 +94,7 @@ func main() {
 			handleSerialMessage(msg)
 		case <-sigChan:
 			slog.Warn("Shutting down...")
+			setCULOnline(false)
 			return
 		}
 	}
@@ -205,6 +206,8 @@ func setupMQTT() {
 	}
 	opts.SetClientID("max2mqtt_bridge")
 	opts.SetAutoReconnect(true)
+	// Entities become unavailable when the bridge loses its MQTT connection
+	opts.SetWill(bridgeStatusTopic, payloadOffline, 1, true)
 	opts.SetOnConnectHandler(func(c mqtt.Client) {
 		slog.Info("Connected to MQTT Broker")
 		c.Subscribe("max/+/set", 0, handleMQTTCommand)
@@ -231,6 +234,7 @@ func setupMQTT() {
 		c.Subscribe("max/+/factory_reset/set", 0, handleMQTTFactoryReset)
 		c.Subscribe("max/+/week_profile/set", 0, handleMQTTWeekProfile)
 		publishBridgeDiscovery()
+		publishBridgeStatus()
 	})
 
 	mqttClient = mqtt.NewClient(opts)
@@ -249,6 +253,7 @@ func serialReaderLoop(out chan<- string, in <-chan string) {
 		}
 
 		initializeCUL(port)
+		setCULOnline(true)
 
 		// Start Writer Routine for this connection
 		stopWriter := make(chan struct{})
@@ -261,6 +266,7 @@ func serialReaderLoop(out chan<- string, in <-chan string) {
 		}
 
 		close(stopWriter)
+		setCULOnline(false)
 		slog.Warn("CUL connection lost or closed. Reconnecting...")
 		port.Close()
 		time.Sleep(2 * time.Second)
@@ -741,8 +747,7 @@ func sendDiscovery(srcAddr string) {
 		"action_template":              "{{ value_json.get('hvac_action') }}",
 		"device":                       deviceInfo,
 	}
-	bytes, _ := json.Marshal(climatePayload)
-	mqttClient.Publish(climateTopic, 0, true, bytes)
+	publishDiscovery(climateTopic, climatePayload)
 
 	battTopic := fmt.Sprintf("homeassistant/binary_sensor/%s_battery/config", deviceID)
 	battPayload := map[string]interface{}{
@@ -753,8 +758,7 @@ func sendDiscovery(srcAddr string) {
 		"value_template": "{{ 'ON' if value_json.get('battery') == 'low' else 'OFF' }}",
 		"device":         deviceInfo,
 	}
-	bytes, _ = json.Marshal(battPayload)
-	mqttClient.Publish(battTopic, 0, true, bytes)
+	publishDiscovery(battTopic, battPayload)
 
 	publishConfigEntities(srcAddr)
 	publishWeekProfileDiscovery(srcAddr)
@@ -777,8 +781,7 @@ func publishBridgeDiscovery() {
 			"name":         "MAX! Bridge",
 		},
 	}
-	bytes, _ := json.Marshal(payload)
-	mqttClient.Publish(topic, 0, true, bytes)
+	publishDiscovery(topic, payload)
 }
 
 func publishState(srcAddr string, data *MaxDeviceData) {
