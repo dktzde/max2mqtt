@@ -56,6 +56,12 @@ func resetTestState() *fakeMQTT {
 	configMutex.Lock()
 	deviceConfigCache = map[string]*DeviceConfig{}
 	configMutex.Unlock()
+	valveMutex.Lock()
+	valveConfigCache = map[string]*ValveConfig{}
+	valveMutex.Unlock()
+	programmeMu.Lock()
+	programmes = map[string]Programme{}
+	programmeMu.Unlock()
 	txMgr = nil
 	verificationMgr = nil
 	ackTracker = nil
