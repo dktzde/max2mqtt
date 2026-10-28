@@ -114,7 +114,10 @@ func (a *AckTracker) ApplySetpointAck(deviceID string) bool {
 		existing = &MaxDeviceData{}
 		stateCache[deviceID] = existing
 	}
-	existing.Temperature = temp
+	// 0 = week program temperature (auto): not known until the next status message
+	if temp > 0 {
+		existing.Temperature = temp
+	}
 	if mode != "" {
 		existing.Mode = mode
 	}
