@@ -1,6 +1,6 @@
 ## Unreleased
 
-- Wait for duty cycle credits instead of dropping a command at once: query again every 15 s until `command_timeout`; week profile messages wait up to 60 min as a bulk transfer and let other commands go first
+- Wait for duty cycle credits instead of dropping a command at once: query again every 15 s until `command_timeout`; week profile messages wait up to 120 min as a bulk transfer and let other commands go first
 
 ## 1.3.2
 
