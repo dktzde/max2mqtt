@@ -917,8 +917,9 @@ func handleMQTTModeCommand(client mqtt.Client, msg mqtt.Message) {
 	switch mode {
 	case "auto":
 		modeBits = 0x00
-		// In Auto, we send the current encoded temp to effectively set a temporary override
-		// matching the current setpoint, preserving the value as requested.
+		// Auto with temperature 0 = follow the week program (FHEM "desiredTemperature auto",
+		// MAX! Cube). A temperature here would be an override until the next switch point.
+		targetTemp = 0
 	case "heat": // Manual
 		modeBits = 0x01
 		// Use current setpoint
