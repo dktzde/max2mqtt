@@ -17,12 +17,13 @@ type QueuedCommand struct {
 	DeviceID    string
 	CreatedAt   time.Time
 	// Bulk: long transfers (week profile). They wait up to bulkCommandTimeout and
-	// let normal commands (setpoint, mode, config) go first.
+	// let normal commands (setpoint, mode, config) go first. After bulkNotifyAfter
+	// Home Assistant shows a notification.
 	Bulk bool
 }
 
 // bulkCommandTimeout is how long a bulk command may wait for duty cycle credits
-const bulkCommandTimeout = 60 * time.Minute
+var bulkCommandTimeout = 120 * time.Minute
 
 // creditRetryInterval is the pause between credit queries while a command waits for credits.
 // The CUL refills about 1 credit per second (1 % of an hour), a TX with wakeup preamble costs about 100.
@@ -48,7 +49,7 @@ type TransmissionManager struct {
 	bulkQueue      chan QueuedCommand
 	creditResponse chan struct{} // Signal when credit response received
 	stop           chan struct{} // closed to end the dispatcher (tests); nil = run forever
-
+	bulkWait       *bulkWaitTracker
 }
 
 var txMgr *TransmissionManager
@@ -76,6 +77,7 @@ func initTransmissionManager() {
 		queue:          make(chan QueuedCommand, 100),
 		bulkQueue:      make(chan QueuedCommand, 200),
 		creditResponse: make(chan struct{}, 1),
+		bulkWait:       newBulkWaitTracker(),
 	}
 
 	fmt.Printf("time=\"%s\" level=info msg=\"TransmissionManager initialized. MinCredits: %d, MaxQueue: %d, Timeout: %s\"\n",
@@ -140,6 +142,9 @@ func (t *TransmissionManager) enqueue(cmd QueuedCommand) {
 	select {
 
 	case queue <- cmd:
+		if cmd.Bulk {
+			t.bulkWait.added(devicedID)
+		}
 		slog.Debug("TxMgr: Enqueued command", "device", devicedID, "desc", description)
 	default:
 		slog.Warn("TxMgr: Queue full! Dropping command", "device", devicedID)
@@ -228,6 +233,9 @@ func (t *TransmissionManager) tryDispatch(cmd QueuedCommand) bool {
 	if time.Now().After(t.deadline(cmd)) {
 		slog.Warn("Command timed out due to duty cycle limits. Restoring state.", "device", cmd.DeviceID, "desc", cmd.Description, "wait", time.Since(cmd.CreatedAt))
 		t.maybeRestoreState(cmd.DeviceID)
+		if cmd.Bulk {
+			t.bulkWait.done(cmd, true)
+		}
 		return true
 	}
 
@@ -245,18 +253,30 @@ func (t *TransmissionManager) tryDispatch(cmd QueuedCommand) bool {
 
 	if queueLen >= t.MaxQueue {
 		slog.Warn("TxMgr: CUL queue too busy. Waiting.", "queue", queueLen, "limit", t.MaxQueue, "device", cmd.DeviceID, "desc", cmd.Description)
+		t.bulkWaiting(cmd)
 		return false
 	}
 
 	if ok && credits < t.MinCredits {
 		slog.Warn("TxMgr: Insufficient credits. Waiting.", "credits", credits, "min", t.MinCredits, "device", cmd.DeviceID, "desc", cmd.Description, "until", t.deadline(cmd).Format(time.TimeOnly))
+		t.bulkWaiting(cmd)
 		return false
 	}
 
 	// Brief pause after credit query so TCP/serial bridges finish the X reply before Zs
 	time.Sleep(50 * time.Millisecond)
 	t.dispatchToSerial(cmd, credits, queueLen)
+	if cmd.Bulk {
+		t.bulkWait.done(cmd, false)
+	}
 	return true
+}
+
+// bulkWaiting raises the Home Assistant notification for a bulk command that waits too long
+func (t *TransmissionManager) bulkWaiting(cmd QueuedCommand) {
+	if cmd.Bulk {
+		t.bulkWait.waiting(cmd, t.deadline(cmd))
+	}
 }
 
 // queryCreditStatus sends a credit query and waits for the response.

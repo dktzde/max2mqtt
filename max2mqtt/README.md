@@ -53,6 +53,11 @@ Who made what, newest first. Full list with dates: [CHANGELOG](CHANGELOG.md).
 - **[Dad-Ju/max2mqtt](https://github.com/Dad-Ju/max2mqtt)** (2026-10-15 to 2026-10-16): 1.2.0 to 1.3.2
 - **Original by [pwurbs/max2mqtt](https://github.com/pwurbs/max2mqtt)** (December 2025 to January 2026): 1.0.0 and 1.1.0
 
+### v1.4.2 (2026-10-28, this fork) — Week profile: wait 120 minutes, notification after 60
+
+- Week profile messages wait up to 120 minutes (before: 60) for duty cycle credits
+- **Home Assistant notification** when a week profile message still waits after 60 minutes (it keeps waiting); removed when the profile was sent, replaced by a "discarded" notification after 120 minutes. The add-on now asks for `homeassistant_api` (Home Assistant shows the new permission on update)
+
 ### v1.4.1 (2026-10-28, this fork) — Week profile wait time
 
 - Week profile messages wait up to 60 minutes (before: 30) for duty cycle credits before they are discarded
@@ -74,7 +79,7 @@ This release makes the bridge a drop-in replacement for the MAX! Cube integratio
 
 ### v1.3.6 (2026-10-28, this fork) — Duty cycle and availability
 
-- **Wait for duty cycle credits:** a command that finds too few credits (or a busy CUL queue) is no longer dropped at once; the bridge queries again every 15 s and sends it when there are enough, until `command_timeout`. Week profile messages wait up to 60 minutes as a bulk transfer and let setpoint, mode and config commands go first
+- **Wait for duty cycle credits:** a command that finds too few credits (or a busy CUL queue) is no longer dropped at once; the bridge queries again every 15 s and sends it when there are enough, until `command_timeout`. Week profile messages wait up to 120 minutes as a bulk transfer (Home Assistant notification after 60 minutes) and let setpoint, mode and config commands go first
 - **Availability:** `max/bridge/status` (`online`/`offline`, MQTT last will, lost CUL connection, shutdown); all entities use it and become unavailable instead of showing old values
 - **Duty cycle sensors:** "Duty Cycle" (%) and "TX Credits" on the bridge device, from the CUL credit report polled every minute
 
@@ -206,7 +211,7 @@ USB sticks still use a path such as `/dev/serial/by-id/...` plus `baud_rate` as 
 | `GATEWAY_ID` | `gateway_id` | `123456` | Gateway address, 6 hex digits. Use your old Cube / FHEM `CUL_MAX` address to keep existing pairings, see [Start here](#start-here-gateway_id) |
 | `LOG_LEVEL` | `log_level` | `info` | Log verbosity (debug/info/warning/error) |
 | `DUTY_CYCLE_MIN_CREDITS` | `duty_cycle_min_credits` | `200` | Min credits to allow sending |
-| `COMMAND_TIMEOUT` | `command_timeout` | `1m` | Max time a command waits for duty cycle credits before it is discarded (week profile messages: 60 min) |
+| `COMMAND_TIMEOUT` | `command_timeout` | `1m` | Max time a command waits for duty cycle credits before it is discarded (week profile messages: 120 min, Home Assistant notification after 60 min) |
 | `MAX_CUL_QUEUE` | `max_cul_queue` | `5` | Max number of commands allowed in CUL stick buffer before throttling |
 | `TX_CHECK_PERIOD` | `tx_check_period` | `1m` | Duration to wait for device verification before retrying Set Temp commands |
 
