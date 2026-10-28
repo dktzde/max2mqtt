@@ -2,10 +2,11 @@
 
 Handover file for the maintainer and for Claude Code sessions working on this repository. **Read this first, and update it after every step** (state, decisions, next steps), so the next session can continue without the chat history.
 
-Last updated: 2026-10-28 (1.4.1: week profile messages wait up to 60 minutes)
+Last updated: 2026-10-28 (1.4.2: week profile waits 120 minutes, notification after 60)
 
 ## Current state
 
+- **1.4.2 (2026-10-28)** on our `main`: week profile messages wait up to 120 minutes (`bulkCommandTimeout`, commit on `tx-wait-for-credits`); after 60 minutes (`bulkNotifyAfter`) a persistent Home Assistant notification per device (`max2mqtt_week_profile_<id>`), removed when the transfer is done, replaced by "discarded" after the timeout. Branch `week-profile-wait-notification` (`ha_notify.go`) starts from `tx-wait-for-credits`, not from `upstream/main`. It calls `persistent_notification` through the Supervisor Core API, so `config.yaml` now has `homeassistant_api: true`; without `SUPERVISOR_TOKEN` it only logs.
 - **1.4.1 (2026-10-28)** on our `main`: week profile messages (bulk queue) wait up to 60 minutes instead of 30 for duty cycle credits (`bulkCommandTimeout`); extra commit on `tx-wait-for-credits`.
 - **1.4.0 (2026-10-28)** on our `main`: the bridge replaces Home Assistant's MAX! Cube integration (same climate modes, presets and attributes; only `maxcube.set_programme` becomes the MQTT topic `max/<id>/programme/set`). Branches from our `main` (they need this fork's valve/vacation code): `persist-device-data` (`/data/devices.json`), `cube-compatible-attributes` (`max/<id>/attributes`, valve based `hvac_action`), `cube-compatible-presets` (comfort/eco/Window Open/On/boost, `none` ends a boost). Migration guide in `max2mqtt/DOCS.md` ("Migrating from the MAX! Cube integration"). A smoke run of the binary against a fake CUL over TCP (no MQTT) decoded state and boost and wrote `devices.json`.
 - **1.3.5 to 1.3.7 (2026-10-28)**: fixes from a review against the Cube integration, each a branch from `upstream/main` with one commit and a test, so upstream can take them one by one:
@@ -15,15 +16,15 @@ Last updated: 2026-10-28 (1.4.1: week profile messages wait up to 60 minutes)
   - 1.3.6 contained a built binary `max2mqtt/max2mqtt` by mistake (removed in 1.3.7, ignored in `max2mqtt/.gitignore`). Build check: `go build -o /dev/null ./...`.
   - Not fixed on purpose (maintainer's decision 2026-10-28): TimeInformation requests (`0x03`) are answered for every device heard, also foreign ones (FHEM answers only `isToMe`).
 - **1.3.4 (2026-10-26)**: vacation mode (`vacation-mode`, `1efaa13`). **1.3.3 (2026-10-25)**: `culfw-auto-ack` (`8aa701b`), `valve-position-sensor` (`1175d15`), `shutter-contact` (`a7c593a`).
-- **On the device:** 1.3.3 installed since 2026-10-25, **never started** (add-on stopped; options still defaults: `serial_port`, `gateway_id`, MQTT login). Nothing above is checked with a real CUL yet.
+- **On the device:** 1.4.0 installed (checked 2026-10-28; 1.3.3 since 2026-10-25 before), **never started** (add-on stopped, no log; options still defaults: `serial_port`, `gateway_id`, MQTT login). Nothing above is checked with a real CUL yet.
 - **No pull requests to Dad-Ju or pwurbs yet.**
 
 ## Next steps
 
-1. Update the add-on in Home Assistant to 1.4.1 (with backup), set `serial_port: tcp://<CUN>:2323`, MQTT user/password, `gateway_id` = Cube RF address (find it over the radio: `log_level: debug`, `dst=`), start it.
+1. Update the add-on in Home Assistant to 1.4.2 (accept the new Home Assistant API permission) (with backup), set `serial_port: tcp://<CUN>:2323`, MQTT user/password, `gateway_id` = Cube RF address (find it over the radio: `log_level: debug`, `dst=`), start it.
 2. Import config and week program per device from the Cube integration's last attributes (DOCS migration guide), rename the new entities to the old Cube entity IDs.
-3. Test with the real CUL: valve position vs. display, window contact, no repeated messages after Auto-Ack, setpoint confirmed by Ack, boost from HA and from the device (preset returns to none), `none` after boost, auto follows the program, duty cycle sensor, availability when the CUN is unplugged, restart keeps the mode, a week profile day (one message), vacation 1-2 hours ahead and `off`.
-4. Write the result here with date and time ("1.4.1 on the device since …, checked …").
+3. Test with the real CUL: valve position vs. display, window contact, no repeated messages after Auto-Ack, setpoint confirmed by Ack, boost from HA and from the device (preset returns to none), `none` after boost, auto follows the program, duty cycle sensor, availability when the CUN is unplugged, restart keeps the mode, a week profile day (one message), week profile notification (e.g. with a low `duty_cycle_min_credits` test or many profiles at once), vacation 1-2 hours ahead and `off`.
+4. Write the result here with date and time ("1.4.2 on the device since …, checked …").
 5. After the test and the maintainer's go-ahead: one PR per branch to `Dad-Ju/max2mqtt` (the `upstream/main` based ones first); Auto-Ack also to `pwurbs/max2mqtt` on a new branch from `pwurbs/main`.
 
 ## Known issues and backlog
@@ -56,6 +57,7 @@ Last updated: 2026-10-28 (1.4.1: week profile messages wait up to 60 minutes)
 - `max2mqtt/CHANGELOG.md`: shown by Home Assistant in the update dialog
 - `max2mqtt/main.go`: CUL init (`initializeCUL`), message handling, decoding, climate discovery, presets
 - `max2mqtt/transmission_manager.go`: duty cycle credits, normal and bulk queue, verification
+- `max2mqtt/ha_notify.go`: Home Assistant notification for week profiles waiting too long
 - `max2mqtt/availability.go`, `duty_cycle.go`, `attributes.go`, `persist.go`: bridge status, credit sensors, Cube style attributes, `/data/devices.json`
 - `max2mqtt/device_config.go`, `config_input.go`: config entities, known flags, `config/import` and `config/set`
 - `max2mqtt/week_profile.go`: week profile (per-day text entities, Cube `programme` format)

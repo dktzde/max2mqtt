@@ -1,3 +1,10 @@
+## 1.4.2
+
+<sub>2026-10-28</sub>
+
+- Week profile messages wait up to 120 minutes (before: 60) for duty cycle credits
+- **Home Assistant notification** when a week profile message still waits after 60 minutes (it keeps waiting); removed when the profile was sent, replaced by a "discarded" notification after 120 minutes. The add-on now asks for `homeassistant_api` (Home Assistant shows the new permission on update)
+
 ## 1.4.1
 
 <sub>2026-10-28</sub>
