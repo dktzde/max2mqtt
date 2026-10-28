@@ -76,3 +76,13 @@ func TestDecodeVacationState(t *testing.T) {
 		t.Errorf("0x40 vacation: mode %s temp %.1f until %q", d.Mode, d.Temperature, d.Until)
 	}
 }
+
+func TestVacationNeedsTemperatureWhenEcoUnknown(t *testing.T) {
+	now := time.Date(2026, 10, 26, 12, 0, 0, 0, time.Local)
+	if _, _, err := parseVacationCommand(`{"until": "2026-11-02 18:00"}`, 0, now); err == nil {
+		t.Fatal("accepted vacation without temperature and unknown eco temperature")
+	}
+	if temp, _, err := parseVacationCommand(`{"temperature": 12, "until": "2026-11-02 18:00"}`, 0, now); err != nil || temp != 12 {
+		t.Fatalf("temp %.1f err %v", temp, err)
+	}
+}

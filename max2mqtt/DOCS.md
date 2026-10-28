@@ -195,7 +195,7 @@ Holds a temperature until a date/time; afterwards the thermostat returns to auto
 | Topic | Payload | Effect |
 |-------|---------|--------|
 | `max/<id>/vacation/set` | `{"temperature": 12, "until": "2026-11-02 18:00"}` | Vacation mode, 12 °C until 2 Nov 2026 18:00 |
-| `max/<id>/vacation/set` | `{"until": "2026-11-02 18:00"}` | Same with the device's eco temperature |
+| `max/<id>/vacation/set` | `{"until": "2026-11-02 18:00"}` | Same with the device's eco temperature (only when it is known, see [Unknown config values](#unknown-config-values-import-first)) |
 | `max/<id>/vacation/set` | `off` | End early: auto with the week program temperature |
 
 - `until` is local time as `YYYY-MM-DD HH:MM` (also `T` as separator and seconds, as Home Assistant `input_datetime` states). The device only knows full and half hours: minutes are rounded down to `:00`/`:30`. It must be in the future.
