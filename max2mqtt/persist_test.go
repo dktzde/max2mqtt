@@ -9,6 +9,7 @@ func TestDeviceDataSurvivesRestart(t *testing.T) {
 	resetTestState()
 	deviceDataFile = filepath.Join(t.TempDir(), "devices.json")
 	t.Setenv("DEVICE_DATA_FILE", deviceDataFile)
+	lastSaved = nil
 	const dev = "0A1B2C"
 
 	// Auto 13 °C, valve 20 %, room 3, known config, a week profile day
