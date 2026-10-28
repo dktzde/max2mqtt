@@ -127,6 +127,7 @@ These are the features:
     - **Shutter Contact**: Window binary sensor (open/closed) plus battery and RF error (diagnostic), state on `max/<id>/state`.
 -   **Pairing Mode**: Trigger via MQTT (`max/bridge/pair`) to pair new devices.
 -   **Association**: Trigger via MQTT (`max/bridge/associate`) to associate radiator valves with wall thermostats.
+-   **Availability**: `max/bridge/status` is `online` while the bridge is connected to MQTT and to the CUL, otherwise `offline` (MQTT last will, lost CUL connection, shutdown). All entities use it, so Home Assistant shows them as unavailable instead of keeping old values.
 -   **Retained Messages**: All MQTT messages (discovery and state) are published with the `retain` flag. This ensures Home Assistant keeps entities and their last known values across bridge or HA restarts.
 -   **Default State**: Newly discovered devices without explicit mode information default to `heat` mode to avoid "Invalid mode" errors in Home Assistant.
 -   **MAX! mode mapping**:

@@ -196,8 +196,7 @@ func publishNumberDiscovery(srcAddr, suffix, name, icon, unit string, min, max, 
 	if unit != "" {
 		payload["unit_of_measurement"] = unit
 	}
-	bytes, _ := json.Marshal(payload)
-	mqttClient.Publish(topic, 0, true, bytes)
+	publishDiscovery(topic, payload)
 }
 
 func publishSelectDiscovery(srcAddr, suffix, name, icon string, options []string, valueTemplate string) {
@@ -214,8 +213,7 @@ func publishSelectDiscovery(srcAddr, suffix, name, icon string, options []string
 		"options":         options,
 		"device":          discoveryDeviceInfo(srcAddr),
 	}
-	bytes, _ := json.Marshal(payload)
-	mqttClient.Publish(topic, 0, true, bytes)
+	publishDiscovery(topic, payload)
 }
 
 func publishButtonDiscovery(srcAddr, suffix, name, icon, commandTopic string) {
@@ -229,8 +227,7 @@ func publishButtonDiscovery(srcAddr, suffix, name, icon, commandTopic string) {
 		"command_topic":   commandTopic,
 		"device":          discoveryDeviceInfo(srcAddr),
 	}
-	bytes, _ := json.Marshal(payload)
-	mqttClient.Publish(topic, 0, true, bytes)
+	publishDiscovery(topic, payload)
 }
 
 func discoveryDeviceInfo(srcAddr string) map[string]string {
@@ -277,8 +274,7 @@ func publishConfigEntities(srcAddr string) {
 		"mode":            "text",
 		"device":          discoveryDeviceInfo(srcAddr),
 	}
-	disBytes, _ := json.Marshal(disPayload)
-	mqttClient.Publish(disTopic, 0, true, disBytes)
+	publishDiscovery(disTopic, disPayload)
 
 	cfg := getDeviceConfig(srcAddr)
 	configMutex.RLock()
