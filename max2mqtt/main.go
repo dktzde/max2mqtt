@@ -230,6 +230,9 @@ func setupMQTT() {
 		c.Subscribe("max/+/disassociate/set", 0, handleMQTTDisassociate)
 		c.Subscribe("max/+/factory_reset/set", 0, handleMQTTFactoryReset)
 		c.Subscribe("max/+/week_profile/set", 0, handleMQTTWeekProfile)
+		c.Subscribe("max/+/week_profile/+/set", 0, handleMQTTWeekProfileDay)
+		c.Subscribe("max/+/programme/set", 0, handleMQTTProgrammeSet)
+		c.Subscribe("max/+/programme/import", 0, handleMQTTProgrammeImport)
 		publishBridgeDiscovery()
 	})
 

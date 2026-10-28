@@ -1,3 +1,7 @@
+## Unreleased
+
+- Week profile: send the second message of a day only when it has more than 7 control points (as FHEM does); skip unchanged days; one text entity per day in FHEM syntax (`17,06:00,21,22:00,17`) instead of one JSON text entity that could not hold a week (255 characters); new topics `max/<id>/programme/set` (MAX! Cube `set_programme` format) and `max/<id>/programme/import` (store only); the stored profile is published on `max/<id>/programme` and `max/<id>/week_profile/<day>`
+
 ## 1.3.2
 
 - Apply expected setpoint on short device Ack (FHEM AckSetTemperature) — verification no longer requires a full status payload
