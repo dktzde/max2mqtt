@@ -178,6 +178,7 @@ func publishDeviceConfig(deviceAddr string) {
 	token := mqttClient.Publish(topic, 0, true, bytes)
 	token.Wait()
 	slog.Debug("Published device config", "device", deviceAddr)
+	publishAttributes(deviceAddr)
 }
 
 func publishNumberDiscovery(srcAddr, suffix, name, icon, unit string, min, max, step float64, valueTemplate string) {

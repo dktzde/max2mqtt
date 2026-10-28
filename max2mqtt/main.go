@@ -552,6 +552,9 @@ func updateDeviceState(srcAddr string, newData *MaxDeviceData) {
 	if newData.CurrentTemperature != nil {
 		existing.CurrentTemperature = newData.CurrentTemperature
 	}
+	if newData.ValvePosition != nil {
+		existing.ValvePosition = newData.ValvePosition
+	}
 
 	if newData.Mode != "" {
 		existing.Mode = newData.Mode
@@ -586,9 +589,19 @@ func updateDeviceState(srcAddr string, newData *MaxDeviceData) {
 		verificationMgr.CheckVerification(srcAddr, existing.Temperature)
 	}
 
-	// Calculate HVAC Action based on User Rule:
+	// HVAC action like the MAX! Cube integration: radiator thermostats heat while the
+	// valve is open. Otherwise (wall thermostats, valve not known yet):
 	// if current_temperature < temperature, then "heating" else "idle"
-	if existing.CurrentTemperature != nil {
+	if existing.ValvePosition != nil {
+		switch {
+		case *existing.ValvePosition > 0:
+			existing.HVACAction = "heating"
+		case existing.HVACMode == "off":
+			existing.HVACAction = "off"
+		default:
+			existing.HVACAction = "idle"
+		}
+	} else if existing.CurrentTemperature != nil {
 		if *existing.CurrentTemperature < existing.Temperature {
 			existing.HVACAction = "heating"
 		} else {
@@ -610,6 +623,7 @@ func updateDeviceState(srcAddr string, newData *MaxDeviceData) {
 
 	slog.Info("Decoded Data", "src", srcAddr, "data", &dataToPublish)
 	publishState(srcAddr, &dataToPublish)
+	publishAttributes(srcAddr)
 }
 
 // presetFromStatus returns the preset for a received status: boost while the device is in
@@ -841,6 +855,7 @@ func sendDiscovery(srcAddr string) {
 		"temperature_unit":             "C",
 		"action_topic":                 fmt.Sprintf(TopicFormatState, srcAddr),
 		"action_template":              "{{ value_json.get('hvac_action') }}",
+		"json_attributes_topic":        fmt.Sprintf(TopicFormatAttributes, srcAddr),
 		"device":                       deviceInfo,
 	}
 	publishDiscovery(climateTopic, climatePayload)

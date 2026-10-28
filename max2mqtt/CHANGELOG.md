@@ -1,3 +1,7 @@
+## Unreleased
+
+- Climate attributes like the MAX! Cube integration on `max/<id>/attributes` (`valve_position`, `programme`, `comfort_temp`, `eco_temp`, boost and decalcification values, `room`, `device_rf_address`); `hvac_action` of radiator thermostats follows the valve (heating while open), as in the Cube integration
+
 ## 1.3.7
 
 <sub>2026-10-28</sub>
