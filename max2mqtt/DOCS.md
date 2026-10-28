@@ -49,6 +49,15 @@ To improve reliability for "Set Temperature" commands (Type `0x40`), a verificat
 3.  **Timeout & Retry**: If no matching confirmation is received within the configured `TX_CHECK_PERIOD` (default 1 minute), the command is considered failed (e.g., lost packet) and is automatically resent once.
 4.  **Priority**: If a user manually changes the temperature on the device immediately after an MQTT command, the verification logic sees a mismatch. It will wait for the `TX_CHECK_PERIOD` to expire and then automatically resend the MQTT command to enforce the requested value (as the verification target is always the last sent command).
 
+## Waiting for duty cycle credits
+
+A command that finds too few credits (`duty_cycle_min_credits`) or a busy CUL queue (`max_cul_queue`) is not dropped at once:
+the bridge queries the credits again every 15 s and sends it as soon as there are enough.
+Only after `command_timeout` (default `1m`) the command is dropped and the old state is restored in Home Assistant.
+The CUL refills about one credit per second; a message with wakeup preamble costs about 100.
+
+Week profile messages are a bulk transfer: they may wait up to 30 minutes, and setpoint, mode or config commands sent in the meantime go first.
+
 ## TX Flow Diagram
 
 ```mermaid
@@ -66,8 +75,11 @@ sequenceDiagram
 
     Note over TM, Thermo: 2. Transmission (Fire & Forget)
     TM->>TM: Check credits (X query)
-    alt Insufficient credits or CUL busy
-        TM-->>MQTT: Restore State (Rollback)
+    loop Insufficient credits or CUL busy
+        TM->>TM: Wait and query again (every 15 s)
+    end
+    alt Still waiting after command_timeout (week profile: 30 min)
+        TM-->>MQTT: Drop command, Restore State (Rollback)
     else Credits OK
         TM->>Transport: TX command (Zs...)
         Transport->>CUL: Send (USB serial or TCP)

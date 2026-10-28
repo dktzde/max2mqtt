@@ -117,7 +117,7 @@ USB sticks still use a path such as `/dev/serial/by-id/...` plus `baud_rate` as 
 | `GATEWAY_ID` | `gateway_id` | `123456` | Gateway Hex ID (3 bytes) |
 | `LOG_LEVEL` | `log_level` | `info` | Log verbosity (debug/info/warning/error) |
 | `DUTY_CYCLE_MIN_CREDITS` | `duty_cycle_min_credits` | `200` | Min credits to allow sending |
-| `COMMAND_TIMEOUT` | `command_timeout` | `1m` | Max time a command waits in queue before being discarded due to e.g. duty cycle limits |
+| `COMMAND_TIMEOUT` | `command_timeout` | `1m` | Max time a command waits for duty cycle credits before it is discarded (week profile messages: 30 min) |
 | `MAX_CUL_QUEUE` | `max_cul_queue` | `5` | Max number of commands allowed in CUL stick buffer before throttling |
 | `TX_CHECK_PERIOD` | `tx_check_period` | `1m` | Duration to wait for device verification before retrying Set Temp commands |
 

@@ -1,3 +1,7 @@
+## Unreleased
+
+- Wait for duty cycle credits instead of dropping a command at once: query again every 15 s until `command_timeout`; week profile messages wait up to 30 min as a bulk transfer and let other commands go first
+
 ## 1.3.2
 
 - Apply expected setpoint on short device Ack (FHEM AckSetTemperature) — verification no longer requires a full status payload
