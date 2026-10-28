@@ -16,13 +16,14 @@ type QueuedCommand struct {
 	Description string
 	DeviceID    string
 	CreatedAt   time.Time
-	// Bulk: long transfers (week profile). They wait up to bulkCommandTimeout and
-	// let normal commands (setpoint, mode, config) go first.
+	// Bulk: long transfers (week profile). They are never dropped for lack of credits,
+	// wait until the credits are above BulkMinCredits and let normal commands
+	// (setpoint, mode, config) go first.
 	Bulk bool
 }
 
-// bulkCommandTimeout is how long a bulk command may wait for duty cycle credits
-const bulkCommandTimeout = 120 * time.Minute
+// culCreditMax is the most credits culfw saves up (10 ms of airtime each, refilled about 1 per second)
+const culCreditMax = 900
 
 // creditRetryInterval is the pause between credit queries while a command waits for credits.
 // The CUL refills about 1 credit per second (1 % of an hour), a TX with wakeup preamble costs about 100.
@@ -40,6 +41,7 @@ type TransmissionManager struct {
 	CurrentCredits int
 	QueueLength    int // Current buffering level reported by CUL (Real-time hardware state)
 	MinCredits     int
+	BulkMinCredits int // MinCredits plus the reserve for normal commands
 	MaxQueue       int // Configured limit for concurrent commands (Software throttle)
 	Timeout        time.Duration
 
@@ -71,6 +73,7 @@ func initTransmissionManager() {
 		CurrentCredits: 0, // Start pessimistic - will query before first TX
 		QueueLength:    0,
 		MinCredits:     config.DutyCycleMinCredits,
+		BulkMinCredits: bulkMinCredits(config.DutyCycleMinCredits, config.WeekProfileReserve),
 		MaxQueue:       config.MaxCulQueue,
 		Timeout:        timeout,
 		queue:          make(chan QueuedCommand, 100),
@@ -78,8 +81,8 @@ func initTransmissionManager() {
 		creditResponse: make(chan struct{}, 1),
 	}
 
-	fmt.Printf("time=\"%s\" level=info msg=\"TransmissionManager initialized. MinCredits: %d, MaxQueue: %d, Timeout: %s\"\n",
-		time.Now().Format(time.RFC3339), config.DutyCycleMinCredits, config.MaxCulQueue, timeout)
+	fmt.Printf("time=\"%s\" level=info msg=\"TransmissionManager initialized. MinCredits: %d, WeekProfileMinCredits: %d, MaxQueue: %d, Timeout: %s\"\n",
+		time.Now().Format(time.RFC3339), config.DutyCycleMinCredits, txMgr.BulkMinCredits, config.MaxCulQueue, timeout)
 
 	go txMgr.dispatcherLoop()
 	initVerificationManager()
@@ -212,11 +215,23 @@ func (t *TransmissionManager) processCommand(cmd QueuedCommand) {
 	}
 }
 
-// deadline returns the time until which the command may wait for credits
-func (t *TransmissionManager) deadline(cmd QueuedCommand) time.Time {
+// bulkMinCredits returns the credits a bulk command needs: minCredits plus reservePercent
+// of the CUL's maximum, so a direct command can still be sent right after a bulk message.
+func bulkMinCredits(minCredits, reservePercent int) int {
+	reservePercent = max(0, min(reservePercent, 100))
+	return minCredits + culCreditMax*reservePercent/100
+}
+
+// minCredits returns the credits the command needs before it is sent
+func (t *TransmissionManager) minCredits(cmd QueuedCommand) int {
 	if cmd.Bulk {
-		return cmd.CreatedAt.Add(bulkCommandTimeout)
+		return max(t.MinCredits, t.BulkMinCredits)
 	}
+	return t.MinCredits
+}
+
+// deadline returns the time until which a normal command may wait for credits
+func (t *TransmissionManager) deadline(cmd QueuedCommand) time.Time {
 	return cmd.CreatedAt.Add(t.Timeout)
 }
 
@@ -224,8 +239,8 @@ func (t *TransmissionManager) deadline(cmd QueuedCommand) time.Time {
 // Returns true when the command is done (sent, or dropped after its timeout),
 // false when it has to wait for credits.
 func (t *TransmissionManager) tryDispatch(cmd QueuedCommand) bool {
-	// 1. Check Timeout before even querying
-	if time.Now().After(t.deadline(cmd)) {
+	// 1. Check Timeout before even querying (bulk commands wait without limit)
+	if !cmd.Bulk && time.Now().After(t.deadline(cmd)) {
 		slog.Warn("Command timed out due to duty cycle limits. Restoring state.", "device", cmd.DeviceID, "desc", cmd.Description, "wait", time.Since(cmd.CreatedAt))
 		t.maybeRestoreState(cmd.DeviceID)
 		return true
@@ -248,8 +263,12 @@ func (t *TransmissionManager) tryDispatch(cmd QueuedCommand) bool {
 		return false
 	}
 
-	if ok && credits < t.MinCredits {
-		slog.Warn("TxMgr: Insufficient credits. Waiting.", "credits", credits, "min", t.MinCredits, "device", cmd.DeviceID, "desc", cmd.Description, "until", t.deadline(cmd).Format(time.TimeOnly))
+	if ok && credits < t.minCredits(cmd) {
+		if cmd.Bulk {
+			slog.Info("TxMgr: Week profile waiting for credits.", "credits", credits, "min", t.minCredits(cmd), "device", cmd.DeviceID, "desc", cmd.Description, "since", cmd.CreatedAt.Format(time.TimeOnly))
+		} else {
+			slog.Warn("TxMgr: Insufficient credits. Waiting.", "credits", credits, "min", t.MinCredits, "device", cmd.DeviceID, "desc", cmd.Description, "until", t.deadline(cmd).Format(time.TimeOnly))
+		}
 		return false
 	}
 

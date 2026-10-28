@@ -56,7 +56,7 @@ the bridge queries the credits again every 15 s and sends it as soon as there ar
 Only after `command_timeout` (default `1m`) the command is dropped and the old state is restored in Home Assistant.
 The CUL refills about one credit per second; a message with wakeup preamble costs about 100.
 
-Week profile messages are a bulk transfer: they may wait up to 120 minutes, and setpoint, mode or config commands sent in the meantime go first.
+Week profile messages are a bulk transfer: they are never discarded for lack of credits, and setpoint, mode or config commands sent in the meantime go first. They are only sent while the credits are above `duty_cycle_min_credits` plus `week_profile_reserve_percent` (default 20 %) of the CUL's maximum of 900 credits (200 + 180 = 380 with the defaults), so a direct change can still be sent at once.
 
 ## TX Flow Diagram
 
@@ -78,7 +78,7 @@ sequenceDiagram
     loop Insufficient credits or CUL busy
         TM->>TM: Wait and query again (every 15 s)
     end
-    alt Still waiting after command_timeout (week profile: 120 min)
+    alt Still waiting after command_timeout (not for week profiles)
         TM-->>MQTT: Drop command, Restore State (Rollback)
     else Credits OK
         TM->>Transport: TX command (Zs...)
