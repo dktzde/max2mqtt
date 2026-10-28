@@ -1,3 +1,7 @@
+## Unreleased
+
+- Send boost with temperature 0 (as FHEM does) and keep the cached setpoint, so `heat`, preset `none` or `auto` after a boost from Home Assistant no longer set 30 °C
+
 ## 1.3.2
 
 - Apply expected setpoint on short device Ack (FHEM AckSetTemperature) — verification no longer requires a full status payload

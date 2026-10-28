@@ -927,13 +927,16 @@ func handleMQTTModeCommand(client mqtt.Client, msg mqtt.Message) {
 		targetTemp = 4.5
 	case "boost": // Boost
 		modeBits = 0x03
-		targetTemp = 30.0 // Usually ignored for boost but safe max
+		// Boost is sent with temperature 0 (FHEM); the device keeps its setpoint for the time after the boost
 	default:
 		slog.Warn("Unknown mode", "mode", mode)
 		return
 	}
 
 	tempVal := byte(targetTemp * 2)
+	if modeBits == 0x03 {
+		tempVal = 0
+	}
 	payloadByte := tempVal | (modeBits << 6)
 
 	modeStr := "manual"
@@ -1276,8 +1279,9 @@ func handleMQTTPresetCommand(client mqtt.Client, msg mqtt.Message) {
 		modeBits = 0x01
 		targetTemp = comfort
 	case "boost":
+		// Sent with temperature 0 (FHEM). The cached setpoint stays, so a later
+		// heat/none/auto command does not turn the boost value into a setpoint
 		modeBits = 0x03
-		targetTemp = 30.0
 	case "none", "":
 		// Clear preset: keep current mode/temp via heat/manual
 		modeBits = 0x01
@@ -1301,7 +1305,9 @@ func handleMQTTPresetCommand(client mqtt.Client, msg mqtt.Message) {
 	stateMutex.Lock()
 	if existing, ok := stateCache[deviceID]; ok {
 		existing.PresetMode = preset
-		existing.Temperature = targetTemp
+		if preset != "boost" {
+			existing.Temperature = targetTemp
+		}
 		if preset == "boost" {
 			existing.Mode = "boost"
 			existing.HVACMode = "heat"
