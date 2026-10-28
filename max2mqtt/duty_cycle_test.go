@@ -15,6 +15,9 @@ func TestDutyCycleFromCredits(t *testing.T) {
 
 func TestCreditReportPublished(t *testing.T) {
 	fc := resetTestState()
+	creditStateMu.Lock()
+	lastCreditState = nil
+	creditStateMu.Unlock()
 	initTransmissionManager()
 	processSerialLine("00 450", make(chan string, 1))
 	if got := fc.get(creditsStateTopic); !strings.Contains(got, `"credits":450`) || !strings.Contains(got, `"duty_cycle":50`) {
