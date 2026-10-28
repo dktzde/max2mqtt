@@ -1,3 +1,7 @@
+## Unreleased
+
+- Reset the climate preset when a status message shows the device left boost (or left the eco/comfort temperature), instead of keeping `boost` until the next command from Home Assistant
+
 ## 1.3.2
 
 - Apply expected setpoint on short device Ack (FHEM AckSetTemperature) — verification no longer requires a full status payload

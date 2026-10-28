@@ -531,8 +531,10 @@ func updateDeviceState(srcAddr string, newData *MaxDeviceData) {
 	}
 	if newData.PresetMode != "" {
 		existing.PresetMode = newData.PresetMode
-	} else if existing.Mode == "boost" {
-		existing.PresetMode = "boost"
+	} else if newData.Mode != "" {
+		// A status message carries the device's real mode: derive the preset from it,
+		// so a boost that ended on the device (or an eco/comfort setpoint changed there) is not kept
+		existing.PresetMode = presetFromStatus(srcAddr, existing.PresetMode, existing.Mode, existing.Temperature)
 	} else if existing.PresetMode == "" {
 		existing.PresetMode = "none"
 	}
@@ -566,6 +568,24 @@ func updateDeviceState(srcAddr string, newData *MaxDeviceData) {
 
 	slog.Info("Decoded Data", "src", srcAddr, "data", &dataToPublish)
 	publishState(srcAddr, &dataToPublish)
+}
+
+// presetFromStatus returns the preset for a received status: boost while the device is in
+// boost mode; eco/comfort only while the device stays in manual mode at that temperature; else none
+func presetFromStatus(srcAddr, prev, mode string, temp float64) string {
+	if mode == "boost" {
+		return "boost"
+	}
+	if mode == "manual" && (prev == "eco" || prev == "comfort") {
+		cfg := getDeviceConfig(srcAddr)
+		configMutex.RLock()
+		eco, comfort := cfg.EcoTemp, cfg.ComfortTemp
+		configMutex.RUnlock()
+		if (prev == "eco" && temp == eco) || (prev == "comfort" && temp == comfort) {
+			return prev
+		}
+	}
+	return "none"
 }
 
 type MaxDeviceData struct {
