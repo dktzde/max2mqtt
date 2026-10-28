@@ -1,5 +1,31 @@
 # Details of MAX! to MQTT Bridge for Home Assistant
 
+## Migrating from the MAX! Cube integration
+
+The bridge offers what Home Assistant's MAX! Cube integration offered: climate entity with HVAC modes `auto`/`heat`/`off`, presets `comfort`/`eco`/`Window Open`/`On`/`boost`/`none` with the same behavior, the same climate attributes (`valve_position`, `programme`, `comfort_temp`, `eco_temp`, `boost_duration`, …), battery and RF error ("link error") binary sensors, a valve position sensor, shutter contacts and a duty cycle sensor.
+
+1. **Write down the Cube's values** before you remove the integration: the attributes of each climate entity (Developer tools → States) contain `comfort_temp`, `eco_temp`, `window_open_temp`, `window_open_duration`, `temp_offset`, `boost_value`, `boost_duration`, `decalc_day`, `decalc_time`, `max_valve`, `valve_offset` and `programme`.
+2. Set `gateway_id` to the Cube's RF address, switch the Cube off, start the bridge (see the README).
+3. **Import** the values per device (nothing is sent to the device). Convert two values: the Cube shows `window_open_duration` in 5-minute steps (`6` = 30 minutes) and `decalc_day` as a number (`0` = `Sat`, `1` = `Sun`, …, `6` = `Fri`). `max_temp`/`min_temp` are not shown by the Cube integration; the factory values are `30.5`/`4.5`.
+
+   ```yaml
+   # Home Assistant action, once per device
+   action: mqtt.publish
+   data:
+     topic: max/0A1B2C/config/import
+     payload: >-
+       {"comfort_temp": 16, "eco_temp": 12, "max_temp": 30.5, "min_temp": 4.5, "measurement_offset": 0,
+        "window_open_temp": 7, "window_open_duration": 30,
+        "boost_duration": 15, "boost_valve_position": 100, "decalc_day": "Sat", "decalc_hour": 9,
+        "max_valve_setting": 100, "valve_offset": 0}
+   ```
+
+   The week program: publish the Cube's `programme` attribute unchanged to `max/<id>/programme/import`.
+4. **Service `maxcube.set_programme`** becomes `mqtt.publish` to `max/<id>/programme/set` with the same data as JSON: `{"day": "monday", "slots": [{"temp": 18, "until": "07:00"}, …]}`. Unchanged days are not sent again, as with the Cube.
+5. **Entity IDs:** the bridge's entities get new IDs (e.g. `climate.max_0a1b2c_…`). Rename them in Home Assistant to the old IDs of the Cube integration (after removing it), so automations and dashboards keep working.
+
+Not available: the Cube's "free memory slots" sensor (no such thing on a CUL).
+
 ## CUL connection (USB or TCP)
 
 The bridge talks to a CUL-FW compatible radio interface. From v1.2.0, `serial_port` selects the transport:

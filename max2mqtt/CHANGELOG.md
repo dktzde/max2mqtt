@@ -1,6 +1,13 @@
-## Unreleased
+## 1.4.0
 
-- Keep device data across restarts in `/data/devices.json`: state (mode, setpoint), valve position, room/group ID, device type, config values (and whether they are known), week profile
+<sub>2026-10-28</sub>
+
+This release makes the bridge a drop-in replacement for the MAX! Cube integration in Home Assistant (apart from the service `maxcube.set_programme`, which becomes the MQTT topic `max/<id>/programme/set` with the same data).
+
+- **Device data survives restarts** in `/data/devices.json`: state (mode, setpoint), valve position, room/group ID, device type, config values (and whether they are known), week profile. Before, a setpoint change after a restart switched an auto thermostat to manual
+- **Climate attributes like the MAX! Cube integration** on `max/<id>/attributes`: `valve_position`, `programme`, `comfort_temp`, `eco_temp`, `window_open_temp`, `window_open_duration` (minutes), `temp_offset`, `boost_value`, `boost_duration`, `decalc_day`, `decalc_time`, `max_valve`, `valve_offset`, `room`, `device_rf_address`
+- **`hvac_action`** of radiator thermostats follows the valve (heating while open), as in the Cube integration
+- **Presets like the MAX! Cube integration:** `comfort`, `eco`, `Window Open`, `On` (30.5 °C), `boost`, derived from the setpoint; temperature presets keep the mode; `none` ends a boost (back to the mode and setpoint before it) or switches to auto (week program). Max temperature 30.5 °C
 
 ## 1.3.7
 

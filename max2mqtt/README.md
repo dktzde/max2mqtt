@@ -27,7 +27,8 @@ Format: 6 hex digits without `0x`, e.g. `0A1B2C`.
 3. Set `gateway_id` to the Cube's RF address and restart the add-on.
 4. **Check:** devices stop repeating their messages (the CUL now acknowledges them, see [Auto-Ack](DOCS.md#auto-ack-za)), the RF error sensors turn off, and a setpoint change from Home Assistant is confirmed in the log (`Short Ack applied pending setpoint`, no retry).
 
-Nothing has to be transferred: week programs, eco/comfort temperatures and associations (e.g. shutter contact ↔ thermostat) are stored in the devices.
+Nothing has to be transferred for the devices to work: week programs, eco/comfort temperatures and associations (e.g. shutter contact ↔ thermostat) are stored in the devices.
+The bridge cannot read them back over the radio, though. To see them in Home Assistant (attributes, config entities, presets eco/comfort/Window Open) and to change single values safely, import them once from the Cube integration: see [Migrating from the MAX! Cube integration](DOCS.md#migrating-from-the-max-cube-integration).
 The room/group IDs are learned automatically from the first received messages.
 
 ## About
@@ -51,6 +52,15 @@ Who made what, newest first. Full list with dates: [CHANGELOG](CHANGELOG.md).
 - **This fork, [dktzde/max2mqtt](https://github.com/dktzde/max2mqtt)** (since 2026-10-24): 1.3.3 and later
 - **[Dad-Ju/max2mqtt](https://github.com/Dad-Ju/max2mqtt)** (2026-10-15 to 2026-10-16): 1.2.0 to 1.3.2
 - **Original by [pwurbs/max2mqtt](https://github.com/pwurbs/max2mqtt)** (December 2025 to January 2026): 1.0.0 and 1.1.0
+
+### v1.4.0 (2026-10-28, this fork) — Drop-in replacement for the MAX! Cube integration
+
+This release makes the bridge a drop-in replacement for the MAX! Cube integration in Home Assistant (apart from the service `maxcube.set_programme`, which becomes the MQTT topic `max/<id>/programme/set` with the same data).
+
+- **Device data survives restarts** in `/data/devices.json`: state (mode, setpoint), valve position, room/group ID, device type, config values (and whether they are known), week profile. Before, a setpoint change after a restart switched an auto thermostat to manual
+- **Climate attributes like the MAX! Cube integration** on `max/<id>/attributes`: `valve_position`, `programme`, `comfort_temp`, `eco_temp`, `window_open_temp`, `window_open_duration` (minutes), `temp_offset`, `boost_value`, `boost_duration`, `decalc_day`, `decalc_time`, `max_valve`, `valve_offset`, `room`, `device_rf_address`
+- **`hvac_action`** of radiator thermostats follows the valve (heating while open), as in the Cube integration
+- **Presets like the MAX! Cube integration:** `comfort`, `eco`, `Window Open`, `On` (30.5 °C), `boost`, derived from the setpoint; temperature presets keep the mode; `none` ends a boost (back to the mode and setpoint before it) or switches to auto (week program). Max temperature 30.5 °C
 
 ### v1.3.7 (2026-10-28, this fork) — Config values and week profile
 
