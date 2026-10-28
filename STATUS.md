@@ -2,10 +2,11 @@
 
 Handover file for the maintainer and for Claude Code sessions working on this repository. **Read this first, and update it after every step** (state, decisions, next steps), so the next session can continue without the chat history.
 
-Last updated: 2026-10-28 (1.4.0: drop-in replacement for the MAX! Cube integration)
+Last updated: 2026-10-28 (1.4.1: week profile messages wait up to 60 minutes)
 
 ## Current state
 
+- **1.4.1 (2026-10-28)** on our `main`: week profile messages (bulk queue) wait up to 60 minutes instead of 30 for duty cycle credits (`bulkCommandTimeout`); extra commit on `tx-wait-for-credits`.
 - **1.4.0 (2026-10-28)** on our `main`: the bridge replaces Home Assistant's MAX! Cube integration (same climate modes, presets and attributes; only `maxcube.set_programme` becomes the MQTT topic `max/<id>/programme/set`). Branches from our `main` (they need this fork's valve/vacation code): `persist-device-data` (`/data/devices.json`), `cube-compatible-attributes` (`max/<id>/attributes`, valve based `hvac_action`), `cube-compatible-presets` (comfort/eco/Window Open/On/boost, `none` ends a boost). Migration guide in `max2mqtt/DOCS.md` ("Migrating from the MAX! Cube integration"). A smoke run of the binary against a fake CUL over TCP (no MQTT) decoded state and boost and wrote `devices.json`.
 - **1.3.5 to 1.3.7 (2026-10-28)**: fixes from a review against the Cube integration, each a branch from `upstream/main` with one commit and a test, so upstream can take them one by one:
   - 1.3.5: `fix-preset-after-boost`, `fix-boost-setpoint` (boost with temperature 0, no 30 °C setpoint), `fix-zero-actual-temperature`, `fix-auto-week-program` (auto = temperature 0)
@@ -19,10 +20,10 @@ Last updated: 2026-10-28 (1.4.0: drop-in replacement for the MAX! Cube integrati
 
 ## Next steps
 
-1. Update the add-on in Home Assistant to 1.4.0 (with backup), set `serial_port: tcp://<CUN>:2323`, MQTT user/password, `gateway_id` = Cube RF address (find it over the radio: `log_level: debug`, `dst=`), start it.
+1. Update the add-on in Home Assistant to 1.4.1 (with backup), set `serial_port: tcp://<CUN>:2323`, MQTT user/password, `gateway_id` = Cube RF address (find it over the radio: `log_level: debug`, `dst=`), start it.
 2. Import config and week program per device from the Cube integration's last attributes (DOCS migration guide), rename the new entities to the old Cube entity IDs.
 3. Test with the real CUL: valve position vs. display, window contact, no repeated messages after Auto-Ack, setpoint confirmed by Ack, boost from HA and from the device (preset returns to none), `none` after boost, auto follows the program, duty cycle sensor, availability when the CUN is unplugged, restart keeps the mode, a week profile day (one message), vacation 1-2 hours ahead and `off`.
-4. Write the result here with date and time ("1.4.0 on the device since …, checked …").
+4. Write the result here with date and time ("1.4.1 on the device since …, checked …").
 5. After the test and the maintainer's go-ahead: one PR per branch to `Dad-Ju/max2mqtt` (the `upstream/main` based ones first); Auto-Ack also to `pwurbs/max2mqtt` on a new branch from `pwurbs/main`.
 
 ## Known issues and backlog
