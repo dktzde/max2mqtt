@@ -762,7 +762,9 @@ func decodeThermostatStatus(pktType int, payload []byte, isRadiator bool) *MaxDe
 	}
 
 	// Bytes 3-5: vacation end date/time in vacation mode, otherwise
-	// Bytes 3-4: Actual Temperature (if present)
+	// Bytes 3-4: Actual Temperature (if present).
+	// Radiator thermostats send 0 when they have no new measurement, and very rarely
+	// values like 0.2 °C; FHEM ignores both, so keep the last known temperature.
 	if modeBits == 0x02 {
 		if len(payload) >= 6 {
 			data.Until = decodeUntil(payload[3:6])
@@ -770,7 +772,9 @@ func decodeThermostatStatus(pktType int, payload []byte, isRadiator bool) *MaxDe
 	} else if len(payload) >= 5 {
 		rawTemp := int(payload[3]&0x01)<<8 | int(payload[4])
 		actualTemp := float64(rawTemp) / 10.0
-		data.CurrentTemperature = &actualTemp
+		if actualTemp >= 1 {
+			data.CurrentTemperature = &actualTemp
+		}
 	}
 
 	return data
