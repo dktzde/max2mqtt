@@ -47,7 +47,7 @@ func (b *bulkWaitTracker) added(deviceID string) {
 }
 
 // waiting raises the notification once per device when a command waits longer than bulkNotifyAfter
-func (b *bulkWaitTracker) waiting(cmd QueuedCommand, deadline time.Time) {
+func (b *bulkWaitTracker) waiting(cmd QueuedCommand) {
 	if b == nil || time.Since(cmd.CreatedAt) < bulkNotifyAfter {
 		return
 	}
@@ -60,13 +60,12 @@ func (b *bulkWaitTracker) waiting(cmd QueuedCommand, deadline time.Time) {
 	b.mu.Unlock()
 	slog.Warn("TxMgr: Week profile still waiting for duty cycle credits", "device", cmd.DeviceID, "since", cmd.CreatedAt.Format(time.TimeOnly))
 	haNotify(bulkNotificationID(cmd.DeviceID), "MAX! week profile waiting",
-		fmt.Sprintf("The week profile for MAX! device %s has been waiting for duty cycle credits since %s. It is sent as soon as there are enough credits, at the latest until %s; after that it is discarded.",
-			cmd.DeviceID, cmd.CreatedAt.Format("15:04"), deadline.Format("15:04")))
+		fmt.Sprintf("The week profile for MAX! device %s has been waiting for duty cycle credits since %s. It is not discarded and is sent as soon as there are enough credits; this notification disappears then.",
+			cmd.DeviceID, cmd.CreatedAt.Format("15:04")))
 }
 
-// done is called when a bulk command was sent (dropped = false) or discarded after its timeout.
-// A discarded week profile replaces the notification; a finished transfer removes it.
-func (b *bulkWaitTracker) done(cmd QueuedCommand, dropped bool) {
+// done is called when a bulk command was sent; the last one of a device removes the notification
+func (b *bulkWaitTracker) done(cmd QueuedCommand) {
 	if b == nil {
 		return
 	}
@@ -79,17 +78,12 @@ func (b *bulkWaitTracker) done(cmd QueuedCommand, dropped bool) {
 		delete(b.pending, cmd.DeviceID)
 	}
 	wasNotified := b.notified[cmd.DeviceID]
-	if dropped || finished {
+	if finished {
 		delete(b.notified, cmd.DeviceID)
 	}
 	b.mu.Unlock()
 
-	switch {
-	case dropped:
-		haNotify(bulkNotificationID(cmd.DeviceID), "MAX! week profile discarded",
-			fmt.Sprintf("The week profile for MAX! device %s waited for duty cycle credits since %s and was discarded (%s). Please send it again.",
-				cmd.DeviceID, cmd.CreatedAt.Format("15:04"), cmd.Description))
-	case finished && wasNotified:
+	if finished && wasNotified {
 		haDismiss(bulkNotificationID(cmd.DeviceID))
 	}
 }

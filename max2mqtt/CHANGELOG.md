@@ -1,7 +1,7 @@
 ## Unreleased
 
-- Home Assistant notification when a week profile message still waits for duty cycle credits after 60 minutes (it keeps waiting); removed when sent, replaced by a "discarded" notification after 120 minutes. The add-on needs `homeassistant_api`
-- Wait for duty cycle credits instead of dropping a command at once: query again every 15 s until `command_timeout`; week profile messages wait up to 120 min as a bulk transfer and let other commands go first
+- Home Assistant notification when a week profile message still waits for duty cycle credits after 60 minutes (it keeps waiting); removed when sent. The add-on needs `homeassistant_api`
+- Wait for duty cycle credits instead of dropping a command at once: query again every 15 s until `command_timeout`; week profile messages are a bulk transfer: never dropped, they let other commands go first and are only sent while the credits leave a reserve for direct commands (`week_profile_reserve_percent`, default 20 % of the CUL's 900 credits on top of `duty_cycle_min_credits`)
 
 ## 1.3.2
 

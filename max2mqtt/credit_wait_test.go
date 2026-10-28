@@ -120,3 +120,53 @@ func TestCommandDroppedAfterTimeout(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 	}
 }
+
+func TestBulkKeepsCreditReserve(t *testing.T) {
+	credits, sent, start := startTxTest(t, time.Minute)
+	txMgr.BulkMinCredits = bulkMinCredits(200, 20)
+	if txMgr.BulkMinCredits != 380 {
+		t.Fatalf("bulk min credits %d, want 380", txMgr.BulkMinCredits)
+	}
+	credits.Store(300)
+	start()
+	txMgr.EnqueueBulk("0A1B2C", "ZsBULK", "week profile")
+	select {
+	case c := <-sent:
+		t.Fatalf("bulk sent inside the reserve: %s", c)
+	case <-time.After(100 * time.Millisecond):
+	}
+	txMgr.Enqueue("0A1B2C", "ZsNORMAL", "setpoint")
+	select {
+	case c := <-sent:
+		if c != "ZsNORMAL" {
+			t.Fatalf("unexpected TX %s", c)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("direct command did not use the reserve")
+	}
+	credits.Store(400)
+	select {
+	case c := <-sent:
+		if c != "ZsBULK" {
+			t.Fatalf("unexpected TX %s", c)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("bulk not sent above the reserve")
+	}
+}
+
+func TestBulkNeverDropped(t *testing.T) {
+	credits, sent, start := startTxTest(t, 50*time.Millisecond)
+	start()
+	txMgr.enqueue(QueuedCommand{Payload: "ZsBULK", DeviceID: "0A1B2C", Description: "week profile", CreatedAt: time.Now().Add(-24 * time.Hour), Bulk: true})
+	time.Sleep(150 * time.Millisecond)
+	credits.Store(900)
+	select {
+	case c := <-sent:
+		if c != "ZsBULK" {
+			t.Fatalf("unexpected TX %s", c)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("old bulk command was dropped")
+	}
+}
