@@ -66,6 +66,8 @@ func parseVacationCommand(payload string, defaultTemp float64, now time.Time) (f
 	temp := defaultTemp
 	if cmd.Temperature != nil {
 		temp = *cmd.Temperature
+	} else if defaultTemp == 0 {
+		return 0, time.Time{}, errors.New(`missing "temperature" (the device's eco temperature is unknown, see max/<id>/config/import)`)
 	}
 	temp = math.Round(temp*2) / 2
 	if temp < 4.5 || temp > 30.5 {
@@ -120,8 +122,12 @@ func handleMQTTVacation(client mqtt.Client, msg mqtt.Message) {
 
 	cfg := getDeviceConfig(deviceID)
 	configMutex.RLock()
-	eco := cfg.EcoTemp
+	eco, ecoKnown := cfg.EcoTemp, cfg.TempsKnown
 	configMutex.RUnlock()
+	if !ecoKnown {
+		// Without a known eco temperature the default (17 °C) would be used: require a temperature
+		eco = 0
+	}
 
 	temp, until, err := parseVacationCommand(payloadStr, eco, time.Now())
 	if err != nil {

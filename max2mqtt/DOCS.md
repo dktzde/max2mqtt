@@ -164,7 +164,23 @@ CUL delivers device Acks as soon as the thermostat answers. Flow:
 3. Device Ack (`0x02`) or status push confirms; bridge re-publishes authoritative state
 4. If no Ack within ~30s, previous values are restored
 
-There is no “query all config” over CUL. After a bridge restart, retained MQTT + in-memory defaults apply until the next successful set/Ack.
+There is no “query all config” over CUL: MAX! devices cannot be asked for their settings.
+
+### Unknown config values (import first)
+
+The temperature group (`0x11`: comfort, eco, max, min, measurement offset, window open temperature and duration) and the valve group (`0x12`: boost duration and valve position, decalcification day and hour, max valve setting, valve offset) are always sent complete.
+As long as the bridge does not know a device's real values, the config entities show *unknown*, and changing a single value is refused (error in the log) – it would overwrite the device's other settings with defaults.
+The presets eco and comfort are refused for the same reason.
+
+Tell the bridge the real values once, e.g. from your MAX! Cube or FHEM, with a complete group (or both):
+
+```bash
+# store only, nothing is sent to the device
+mosquitto_pub -t "max/0A1B2C/config/import" -m '{"comfort_temp": 21, "eco_temp": 17, "max_temp": 30.5, "min_temp": 4.5, "measurement_offset": 0, "window_open_temp": 12, "window_open_duration": 15, "boost_duration": 5, "boost_valve_position": 80, "decalc_day": "Sat", "decalc_hour": 12, "max_valve_setting": 100, "valve_offset": 0}'
+```
+
+`max/<id>/config/set` takes the same JSON, stores it and sends it to the device (for new devices, or to reset all values at once).
+`window_open_duration` is in minutes (steps of 5), `decalc_day` is `Sat` … `Fri`.
 
 > **Important**: Don't change many config values in a short time — duty-cycle credits will block TX.
 
@@ -179,7 +195,7 @@ Holds a temperature until a date/time; afterwards the thermostat returns to auto
 | Topic | Payload | Effect |
 |-------|---------|--------|
 | `max/<id>/vacation/set` | `{"temperature": 12, "until": "2026-11-02 18:00"}` | Vacation mode, 12 °C until 2 Nov 2026 18:00 |
-| `max/<id>/vacation/set` | `{"until": "2026-11-02 18:00"}` | Same with the device's eco temperature |
+| `max/<id>/vacation/set` | `{"until": "2026-11-02 18:00"}` | Same with the device's eco temperature (only when it is known, see [Unknown config values](#unknown-config-values-import-first)) |
 | `max/<id>/vacation/set` | `off` | End early: auto with the week program temperature |
 
 - `until` is local time as `YYYY-MM-DD HH:MM` (also `T` as separator and seconds, as Home Assistant `input_datetime` states). The device only knows full and half hours: minutes are rounded down to `:00`/`:30`. It must be in the future.
@@ -221,8 +237,24 @@ data:
 - **Group ID**: 0–255 (`0x22` / remove at 0)
 - **Disassociate Partner**: text `PARTNER` or `PARTNER:type` (`0x21`)
 - **Factory Reset**: button (`0xF0`) — destructive
-- **Week Profile JSON**: text entity; payload like `{"Mon":{"time":["06:00","22:00"],"temp":[20,17]},...}` (`0x10`)
+- **Week Profile Monday … Sunday**: one text entity per day in FHEM syntax, see [Week profile](#week-profile-0x10)
 - **Bridge Pairing**: button on the bridge device → `max/bridge/pair`
+
+### Week profile (`0x10`)
+
+Each day has up to 13 control points "temperature until time"; the last one ends at 24:00.
+MAX! devices cannot be asked for their week profile, so the bridge shows the last one it sent or imported (unknown until then).
+
+| Topic | Payload | Effect |
+|---|---|---|
+| `max/<id>/week_profile/<day>/set` | `17,06:00,21,22:00,17` (FHEM syntax: temperature, until, …, last temperature until 24:00) | send one day |
+| `max/<id>/programme/set` | `{"day":"monday","slots":[{"temp":17,"until":"06:00"},{"temp":21,"until":"22:00"},{"temp":17,"until":"24:00"}]}` (like the MAX! Cube integration's `set_programme` service), or a whole week `{"monday":[…],"tuesday":[…]}` | send |
+| `max/<id>/programme/import` | whole or part of a week in the same format | store only, nothing is sent (e.g. the profile your MAX! Cube showed) |
+| `max/<id>/week_profile/set` | `{"Mon":{"time":["06:00","22:00","24:00"],"temp":[17,21,17]}}` (older format, `time` = until) | send |
+
+`<day>` is `monday` … `sunday`. Days that did not change are not sent again.
+A day with up to 7 control points takes one radio message, more take two. Messages wait for duty cycle credits if needed.
+State: `max/<id>/week_profile/<day>` (FHEM syntax, shown by the text entities) and `max/<id>/programme` (whole week, MAX! Cube format).
 
 ### Mode after restart
 
