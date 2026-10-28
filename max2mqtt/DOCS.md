@@ -57,6 +57,7 @@ Only after `command_timeout` (default `1m`) the command is dropped and the old s
 The CUL refills about one credit per second; a message with wakeup preamble costs about 100.
 
 Week profile messages are a bulk transfer: they may wait up to 120 minutes, and setpoint, mode or config commands sent in the meantime go first.
+If a week profile message still waits after 60 minutes, the add-on shows a persistent notification in Home Assistant (it keeps waiting); the notification is removed when the profile was sent, or replaced by a "discarded" notification after 120 minutes. This uses the Home Assistant API of the Supervisor (`homeassistant_api`); a bridge running outside Home Assistant only logs it.
 
 ## TX Flow Diagram
 
