@@ -118,6 +118,9 @@ func (a *AckTracker) ApplySetpointAck(deviceID string) bool {
 	if temp > 0 {
 		existing.Temperature = temp
 	}
+	if mode == "boost" && existing.Mode != "boost" {
+		existing.ModeBeforeBoost, existing.SetpointBeforeBoost = existing.Mode, existing.Temperature
+	}
 	if mode != "" {
 		existing.Mode = mode
 	}
