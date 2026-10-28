@@ -1125,6 +1125,16 @@ func gatewayAddrHex() string {
 
 // sendCommand constructs and sends a MAX! message via CUL
 func sendCommand(dstAddr string, typeByte byte, payload []byte, description string) {
+	queueCommand(dstAddr, typeByte, payload, description, false)
+}
+
+// sendBulkCommand sends one message of a long transfer (week profile): it may wait longer
+// for duty cycle credits and lets normal commands go first
+func sendBulkCommand(dstAddr string, typeByte byte, payload []byte, description string) {
+	queueCommand(dstAddr, typeByte, payload, description, true)
+}
+
+func queueCommand(dstAddr string, typeByte byte, payload []byte, description string, bulk bool) {
 	dstAddr = strings.ToUpper(dstAddr)
 	cnt := nextMsgCounter()
 	srcBytes := getGatewayAddress()
@@ -1176,7 +1186,11 @@ func sendCommand(dstAddr string, typeByte byte, payload []byte, description stri
 
 	if txMgr != nil {
 		descWithCnt := fmt.Sprintf("%s (Cnt:%d grp:%d)", description, cnt, groupID)
-		txMgr.Enqueue(dstAddr, cmd, descWithCnt)
+		if bulk {
+			txMgr.EnqueueBulk(dstAddr, cmd, descWithCnt)
+		} else {
+			txMgr.Enqueue(dstAddr, cmd, descWithCnt)
+		}
 	} else {
 		select {
 		case serialWrite <- cmd:

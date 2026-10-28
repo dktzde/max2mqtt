@@ -16,7 +16,17 @@ type QueuedCommand struct {
 	Description string
 	DeviceID    string
 	CreatedAt   time.Time
+	// Bulk: long transfers (week profile). They wait up to bulkCommandTimeout and
+	// let normal commands (setpoint, mode, config) go first.
+	Bulk bool
 }
+
+// bulkCommandTimeout is how long a bulk command may wait for duty cycle credits
+const bulkCommandTimeout = 30 * time.Minute
+
+// creditRetryInterval is the pause between credit queries while a command waits for credits.
+// The CUL refills about 1 credit per second (1 % of an hour), a TX with wakeup preamble costs about 100.
+var creditRetryInterval = 15 * time.Second
 
 // TransmissionManager handles the complexity of sending commands to MAX! devices.
 // It manages the Regulatory Duty Cycle (via CUL Credits), ensuring we don't exceed
@@ -35,7 +45,9 @@ type TransmissionManager struct {
 
 	mutex          sync.RWMutex
 	queue          chan QueuedCommand
+	bulkQueue      chan QueuedCommand
 	creditResponse chan struct{} // Signal when credit response received
+	stop           chan struct{} // closed to end the dispatcher (tests); nil = run forever
 
 }
 
@@ -62,6 +74,7 @@ func initTransmissionManager() {
 		MaxQueue:       config.MaxCulQueue,
 		Timeout:        timeout,
 		queue:          make(chan QueuedCommand, 100),
+		bulkQueue:      make(chan QueuedCommand, 200),
 		creditResponse: make(chan struct{}, 1),
 	}
 
@@ -98,16 +111,35 @@ func (t *TransmissionManager) SignalCreditResponse() {
 // Enqueue adds a command to the transmission queue.
 // It is safe to call from multiple goroutines (e.g., MQTT handlers).
 func (t *TransmissionManager) Enqueue(devicedID, payload, description string) {
-	cmd := QueuedCommand{
+	t.enqueue(QueuedCommand{
 		Payload:     payload,
 		Description: description,
 		DeviceID:    devicedID,
 		CreatedAt:   time.Now(),
+	})
+}
+
+// EnqueueBulk adds a command of a long transfer (week profile), see QueuedCommand.Bulk.
+func (t *TransmissionManager) EnqueueBulk(devicedID, payload, description string) {
+	t.enqueue(QueuedCommand{
+		Payload:     payload,
+		Description: description,
+		DeviceID:    devicedID,
+		CreatedAt:   time.Now(),
+		Bulk:        true,
+	})
+}
+
+func (t *TransmissionManager) enqueue(cmd QueuedCommand) {
+	devicedID, description := cmd.DeviceID, cmd.Description
+	queue := t.queue
+	if cmd.Bulk {
+		queue = t.bulkQueue
 	}
 
 	select {
 
-	case t.queue <- cmd:
+	case queue <- cmd:
 		slog.Debug("TxMgr: Enqueued command", "device", devicedID, "desc", description)
 	default:
 		slog.Warn("TxMgr: Queue full! Dropping command", "device", devicedID)
@@ -132,21 +164,71 @@ func drainChannel(ch <-chan struct{}) {
 }
 
 // dispatcherLoop consumes queued commands and dispatches them.
+// Normal commands go first; a bulk command waiting for credits lets them pass.
 // Broadcasts (deviceID=000000) skip state restoration.
 // We do NOT wait for ACKs—the next RX from the device will self-correct state if needed.
 func (t *TransmissionManager) dispatcherLoop() {
-	for cmd := range t.queue {
-		t.processCommand(cmd)
+	var bulk *QueuedCommand
+	for {
+		select {
+		case cmd := <-t.queue:
+			t.processCommand(cmd)
+			continue
+		case <-t.stop:
+			return
+		default:
+		}
+		if bulk == nil {
+			select {
+			case cmd := <-t.queue:
+				t.processCommand(cmd)
+				continue
+			case cmd := <-t.bulkQueue:
+				bulk = &cmd
+			case <-t.stop:
+				return
+			}
+		}
+		if t.tryDispatch(*bulk) {
+			bulk = nil
+			continue
+		}
+		select {
+		case cmd := <-t.queue:
+			t.processCommand(cmd)
+		case <-time.After(creditRetryInterval):
+		}
 	}
 }
 
-// processCommand handles a single command dispatch attempt.
+// processCommand sends a normal command, waiting for duty cycle credits until its timeout.
 func (t *TransmissionManager) processCommand(cmd QueuedCommand) {
+	for !t.tryDispatch(cmd) {
+		select {
+		case <-time.After(creditRetryInterval):
+		case <-t.stop:
+			return
+		}
+	}
+}
+
+// deadline returns the time until which the command may wait for credits
+func (t *TransmissionManager) deadline(cmd QueuedCommand) time.Time {
+	if cmd.Bulk {
+		return cmd.CreatedAt.Add(bulkCommandTimeout)
+	}
+	return cmd.CreatedAt.Add(t.Timeout)
+}
+
+// tryDispatch sends the command if the CUL has credits and queue space.
+// Returns true when the command is done (sent, or dropped after its timeout),
+// false when it has to wait for credits.
+func (t *TransmissionManager) tryDispatch(cmd QueuedCommand) bool {
 	// 1. Check Timeout before even querying
-	if time.Since(cmd.CreatedAt) > t.Timeout {
-		slog.Warn("Command timed out due to duty cycle limits. Restoring state.", "device", cmd.DeviceID, "wait", time.Since(cmd.CreatedAt))
+	if time.Now().After(t.deadline(cmd)) {
+		slog.Warn("Command timed out due to duty cycle limits. Restoring state.", "device", cmd.DeviceID, "desc", cmd.Description, "wait", time.Since(cmd.CreatedAt))
 		t.maybeRestoreState(cmd.DeviceID)
-		return
+		return true
 	}
 
 	// 2. Query credits and wait for response
@@ -162,20 +244,19 @@ func (t *TransmissionManager) processCommand(cmd QueuedCommand) {
 	}
 
 	if queueLen >= t.MaxQueue {
-		slog.Warn("TxMgr: CUL queue too busy. Restoring state.", "queue", queueLen, "limit", t.MaxQueue, "device", cmd.DeviceID)
-		t.maybeRestoreState(cmd.DeviceID)
-		return
+		slog.Warn("TxMgr: CUL queue too busy. Waiting.", "queue", queueLen, "limit", t.MaxQueue, "device", cmd.DeviceID, "desc", cmd.Description)
+		return false
 	}
 
 	if ok && credits < t.MinCredits {
-		slog.Warn("TxMgr: Insufficient credits. Restoring state.", "credits", credits, "min", t.MinCredits, "device", cmd.DeviceID)
-		t.maybeRestoreState(cmd.DeviceID)
-		return
+		slog.Warn("TxMgr: Insufficient credits. Waiting.", "credits", credits, "min", t.MinCredits, "device", cmd.DeviceID, "desc", cmd.Description, "until", t.deadline(cmd).Format(time.TimeOnly))
+		return false
 	}
 
 	// Brief pause after credit query so TCP/serial bridges finish the X reply before Zs
 	time.Sleep(50 * time.Millisecond)
 	t.dispatchToSerial(cmd, credits, queueLen)
+	return true
 }
 
 // queryCreditStatus sends a credit query and waits for the response.
