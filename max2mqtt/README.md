@@ -83,7 +83,7 @@ Exposes FHEM-compatible settings as MQTT discovery entities (`entity_category: c
 - **Climate presets:** eco, comfort, boost
 - **Temperatures (`0x11`):** eco/comfort/min/max, measurement offset, window-open temp/duration
 - **Valve (`0x12`, radiators):** boost duration/position, decalc day/hour, max valve, valve offset
-- **Other:** display mode, group ID, disassociate partner, factory reset, week profile JSON
+- **Other:** display mode, group ID, disassociate partner, factory reset, week profile
 - Retained state on `max/<id>/config`; UI updates when the device Acks over CUL
 
 ### v1.2.0 (2026-10-15, Dad-Ju) — Network CUL
@@ -150,7 +150,7 @@ These are the features:
 - Cube/MAXLAN polling
 - fakeWT / fakeSC (external sensor simulation)
 
-Prefer Home Assistant schedules for day-to-day heating; device week profile JSON is available for advanced use.
+Prefer Home Assistant schedules for day-to-day heating; the device week profile can be set per day (text entities) or in MAX! Cube format, see DOCS.
 
 ## Installation and Configuration as Home Assistant Add-on
 

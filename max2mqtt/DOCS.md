@@ -237,8 +237,24 @@ data:
 - **Group ID**: 0–255 (`0x22` / remove at 0)
 - **Disassociate Partner**: text `PARTNER` or `PARTNER:type` (`0x21`)
 - **Factory Reset**: button (`0xF0`) — destructive
-- **Week Profile JSON**: text entity; payload like `{"Mon":{"time":["06:00","22:00"],"temp":[20,17]},...}` (`0x10`)
+- **Week Profile Monday … Sunday**: one text entity per day in FHEM syntax, see [Week profile](#week-profile-0x10)
 - **Bridge Pairing**: button on the bridge device → `max/bridge/pair`
+
+### Week profile (`0x10`)
+
+Each day has up to 13 control points "temperature until time"; the last one ends at 24:00.
+MAX! devices cannot be asked for their week profile, so the bridge shows the last one it sent or imported (unknown until then).
+
+| Topic | Payload | Effect |
+|---|---|---|
+| `max/<id>/week_profile/<day>/set` | `17,06:00,21,22:00,17` (FHEM syntax: temperature, until, …, last temperature until 24:00) | send one day |
+| `max/<id>/programme/set` | `{"day":"monday","slots":[{"temp":17,"until":"06:00"},{"temp":21,"until":"22:00"},{"temp":17,"until":"24:00"}]}` (like the MAX! Cube integration's `set_programme` service), or a whole week `{"monday":[…],"tuesday":[…]}` | send |
+| `max/<id>/programme/import` | whole or part of a week in the same format | store only, nothing is sent (e.g. the profile your MAX! Cube showed) |
+| `max/<id>/week_profile/set` | `{"Mon":{"time":["06:00","22:00","24:00"],"temp":[17,21,17]}}` (older format, `time` = until) | send |
+
+`<day>` is `monday` … `sunday`. Days that did not change are not sent again.
+A day with up to 7 control points takes one radio message, more take two. Messages wait for duty cycle credits if needed.
+State: `max/<id>/week_profile/<day>` (FHEM syntax, shown by the text entities) and `max/<id>/programme` (whole week, MAX! Cube format).
 
 ### Mode after restart
 
