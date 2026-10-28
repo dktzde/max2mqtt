@@ -67,6 +67,7 @@ These are the features:
     - **Binary Sensor**: Battery status (OK/Low).
 -   **Pairing Mode**: Trigger via MQTT (`max/bridge/pair`) to pair new devices.
 -   **Association**: Trigger via MQTT (`max/bridge/associate`) to associate radiator valves with wall thermostats.
+-   **Duty cycle**: "Duty Cycle" (used part of the CUL credit budget in %, like the MAX! Cube's value) and "TX Credits" sensors on the bridge device, polled every minute (`X`, no radio traffic).
 -   **Retained Messages**: All MQTT messages (discovery and state) are published with the `retain` flag. This ensures Home Assistant keeps entities and their last known values across bridge or HA restarts.
 -   **Default State**: Newly discovered devices without explicit mode information default to `heat` mode to avoid "Invalid mode" errors in Home Assistant.
 -   **MAX! mode mapping**:
