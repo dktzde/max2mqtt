@@ -1,3 +1,7 @@
+## Unreleased
+
+- Climate presets like the MAX! Cube integration: `comfort`, `eco`, `Window Open`, `On` (30.5 °C), `boost`, derived from the setpoint; temperature presets keep the mode; `none` ends a boost (back to the mode and setpoint before it) or switches to auto (week program); max temperature 30.5 °C
+
 ## 1.3.7
 
 <sub>2026-10-28</sub>

@@ -186,7 +186,16 @@ mosquitto_pub -t "max/0A1B2C/config/import" -m '{"comfort_temp": 21, "eco_temp":
 
 ### Climate presets
 
-Presets on the climate entity: **eco**, **comfort**, **boost** (apply stored eco/comfort temps or boost mode via `0x40`). HVAC modes remain `auto` / `heat` / `off`.
+Presets on the climate entity, as in the MAX! Cube integration (HVAC modes remain `auto` / `heat` / `off`):
+
+| Preset | Sends | Shown when |
+|---|---|---|
+| `comfort`, `eco`, `Window Open` | that temperature from the device config, mode kept (auto: until the next switch point; from boost/vacation: manual) | the setpoint equals it |
+| `On` | 30.5 °C (valve fully open), mode kept | the setpoint is 30.5 °C |
+| `boost` | boost mode (`0x40` with temperature 0) | the device is in boost |
+| `none` | in boost: back to the mode and setpoint from before the boost; otherwise auto (week program) | none of the above |
+
+`comfort`, `eco` and `Window Open` need known config values ([import](#unknown-config-values-import-first)); `Window Open` is also what a linked shutter contact sets when the window opens.
 
 ### Vacation mode
 

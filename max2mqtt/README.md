@@ -121,7 +121,7 @@ These are the features:
 -   **Pairing Mode**: Trigger via MQTT (`max/bridge/pair`) to pair new devices.
 -   **Association Management**: Trigger via MQTT (`max/bridge/associate`) to associate radiator valves with wall thermostats.
 -   **Battery**: Reports battery state (OK/Low) for thermostats and shutter contacts.
--   **Thermostat Configuration**: Full ConfigTemperatures / ConfigValve / display / group / week profile via HA config entities; climate presets eco/comfort/boost; Ack-confirmed state (CUL push).
+-   **Thermostat Configuration**: Full ConfigTemperatures / ConfigValve / display / group / week profile via HA config entities; climate presets comfort/eco/Window Open/On/boost; Ack-confirmed state (CUL push).
 -   **TX Management**:
     - **Duty Cycle Management**: Adheres to 868MHz 1% transmission limits using CUL's credit system. When the configurable minimum threshold is exceeded, the bridge will not send any commands and the old state is restored.
     - **Buffer Management**: Detects LOVF (Limit Of Voice Full) or CUL buffer overflow errors (configurable thresholds).
@@ -132,7 +132,7 @@ These are the features:
 -   **Entities**:
     - **Climate**: Thermostat control with support for `temperature` (setpoint), `current_temperature` (actual), `hvac_action` (heating/idle), and `hvac_mode` (auto/heat/off).
     - **Number / Select / Text / Button**: Config entities (eco/comfort/min/max/offset/window/valve/display/group/week profile/disassociate/factory reset).
-    - **Climate presets**: eco, comfort, boost.
+    - **Climate presets** like the MAX! Cube integration: comfort, eco, Window Open, On, boost; `none` ends a boost (back to the mode before) or switches to auto.
     - **Vacation mode**: hold a temperature until a date/time via `max/<id>/vacation/set` (see DOCS); end date as "Vacation Until" sensor.
     - **Binary Sensor**: Battery status (OK/Low), RF error (diagnostic: device cannot reach its link partner/gateway).
     - **Sensor**: Valve position in % (radiator thermostats, retained on `max/<id>/valve`).
