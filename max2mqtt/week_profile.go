@@ -215,6 +215,7 @@ func publishProgramme(deviceID string) {
 	for d, slots := range prog {
 		mqttClient.Publish(fmt.Sprintf("max/%s/week_profile/%s", deviceID, d), 0, true, formatFHEMDay(slots))
 	}
+	publishAttributes(deviceID)
 }
 
 // parseProgrammePayload reads {"day":"monday","slots":[...]} or {"monday":[...],...}

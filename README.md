@@ -34,6 +34,7 @@ Who made what, newest first. Full list with dates: [CHANGELOG](max2mqtt/CHANGELO
 
 **This fork, [dktzde/max2mqtt](https://github.com/dktzde/max2mqtt)** (since 2026-10-24):
 
+- **v1.4.0** (2026-10-28) — Drop-in replacement for the MAX! Cube integration: device data kept across restarts, Cube style climate attributes (valve_position, programme, ...), Cube presets (Window Open, On, none)
 - **v1.3.7** (2026-10-28) — Unknown config values are no longer overwritten with defaults (import/set topics), week profile per day and in MAX! Cube format
 - **v1.3.6** (2026-10-28) — Commands wait for duty cycle credits, bridge availability for all entities, Duty Cycle and TX Credits sensors
 - **v1.3.5** (2026-10-28) — Fixes: preset after boost, boost no longer sets 30 °C, actual temperature 0 ignored, auto follows the week program

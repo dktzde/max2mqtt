@@ -69,6 +69,10 @@ func main() {
 
 	fmt.Printf("time=\"%s\" level=info msg=\"Starting MAX! to MQTT Bridge\"\n", time.Now().Format(time.RFC3339))
 
+	// 1.2. Device data from the last run (state, config, week profile)
+	loadDeviceData()
+	go startDeviceDataSaver()
+
 	// 1.5. Duty Cycle + Ack tracker (push confirmation, no poll)
 	initTransmissionManager()
 	initAckTracker()
@@ -96,6 +100,7 @@ func main() {
 			handleSerialMessage(msg)
 		case <-sigChan:
 			slog.Warn("Shutting down...")
+			saveDeviceData()
 			setCULOnline(false)
 			return
 		}
@@ -552,7 +557,14 @@ func updateDeviceState(srcAddr string, newData *MaxDeviceData) {
 	if newData.CurrentTemperature != nil {
 		existing.CurrentTemperature = newData.CurrentTemperature
 	}
+	if newData.ValvePosition != nil {
+		existing.ValvePosition = newData.ValvePosition
+	}
 
+	if newData.Mode == "boost" && existing.Mode != "boost" {
+		// Remember what to return to when the boost is ended from Home Assistant (preset none)
+		existing.ModeBeforeBoost, existing.SetpointBeforeBoost = existing.Mode, existing.Temperature
+	}
 	if newData.Mode != "" {
 		existing.Mode = newData.Mode
 		if newData.Mode != "vacation" {
@@ -586,9 +598,19 @@ func updateDeviceState(srcAddr string, newData *MaxDeviceData) {
 		verificationMgr.CheckVerification(srcAddr, existing.Temperature)
 	}
 
-	// Calculate HVAC Action based on User Rule:
+	// HVAC action like the MAX! Cube integration: radiator thermostats heat while the
+	// valve is open. Otherwise (wall thermostats, valve not known yet):
 	// if current_temperature < temperature, then "heating" else "idle"
-	if existing.CurrentTemperature != nil {
+	if existing.ValvePosition != nil {
+		switch {
+		case *existing.ValvePosition > 0:
+			existing.HVACAction = "heating"
+		case existing.HVACMode == "off":
+			existing.HVACAction = "off"
+		default:
+			existing.HVACAction = "idle"
+		}
+	} else if existing.CurrentTemperature != nil {
 		if *existing.CurrentTemperature < existing.Temperature {
 			existing.HVACAction = "heating"
 		} else {
@@ -610,22 +632,35 @@ func updateDeviceState(srcAddr string, newData *MaxDeviceData) {
 
 	slog.Info("Decoded Data", "src", srcAddr, "data", &dataToPublish)
 	publishState(srcAddr, &dataToPublish)
+	publishAttributes(srcAddr)
 }
 
-// presetFromStatus returns the preset for a received status: boost while the device is in
-// boost mode; eco/comfort only while the device stays in manual mode at that temperature; else none
+// presetFromStatus returns the preset for a received status, like the MAX! Cube integration:
+// boost while the device is in boost mode, otherwise derived from the setpoint (comfort, eco,
+// On = 30.5 °C, Window Open = window open temperature). Without known config values only boost,
+// On and an eco/comfort preset set from Home Assistant (manual at that temperature) are kept.
 func presetFromStatus(srcAddr, prev, mode string, temp float64) string {
 	if mode == "boost" {
 		return "boost"
 	}
-	if mode == "manual" && (prev == "eco" || prev == "comfort") {
-		cfg := getDeviceConfig(srcAddr)
-		configMutex.RLock()
-		eco, comfort := cfg.EcoTemp, cfg.ComfortTemp
-		configMutex.RUnlock()
-		if (prev == "eco" && temp == eco) || (prev == "comfort" && temp == comfort) {
-			return prev
-		}
+	if mode == "vacation" {
+		return "none"
+	}
+	cfg := getDeviceConfig(srcAddr)
+	configMutex.RLock()
+	eco, comfort, windowOpen, known := cfg.EcoTemp, cfg.ComfortTemp, cfg.WindowOpenTemp, cfg.TempsKnown
+	configMutex.RUnlock()
+	switch {
+	case known && temp == comfort:
+		return "comfort"
+	case known && temp == eco:
+		return "eco"
+	case temp == onTemperature:
+		return presetOn
+	case known && temp == windowOpen:
+		return presetWindowOpen
+	case !known && mode == "manual" && ((prev == "eco" && temp == eco) || (prev == "comfort" && temp == comfort)):
+		return prev
 	}
 	return "none"
 }
@@ -648,6 +683,10 @@ type MaxDeviceData struct {
 
 	// Until: end of vacation mode as "YYYY-MM-DD HH:MM" (device local time), only in vacation mode
 	Until string `json:"until,omitempty"`
+
+	// Mode and setpoint before the current boost, to end it with preset none
+	ModeBeforeBoost     string  `json:"mode_before_boost,omitempty"`
+	SetpointBeforeBoost float64 `json:"setpoint_before_boost,omitempty"`
 }
 
 // convert pointer to string for appropriate logging
@@ -833,14 +872,15 @@ func sendDiscovery(srcAddr string) {
 		"preset_mode_command_topic":    fmt.Sprintf("max/%s/preset/set", srcAddr),
 		"preset_mode_state_topic":      fmt.Sprintf(TopicFormatState, srcAddr),
 		"preset_mode_value_template":   "{{ value_json.get('preset_mode', 'none') }}",
-		"preset_modes":                 []string{"eco", "comfort", "boost"},
+		"preset_modes":                 []string{"comfort", "eco", presetWindowOpen, presetOn, "boost"},
 		"min_temp":                     5,
-		"max_temp":                     30,
+		"max_temp":                     30.5,
 		"temp_step":                    0.5,
 		"precision":                    0.1,
 		"temperature_unit":             "C",
 		"action_topic":                 fmt.Sprintf(TopicFormatState, srcAddr),
 		"action_template":              "{{ value_json.get('hvac_action') }}",
+		"json_attributes_topic":        fmt.Sprintf(TopicFormatAttributes, srcAddr),
 		"device":                       deviceInfo,
 	}
 	publishDiscovery(climateTopic, climatePayload)
@@ -1425,69 +1465,117 @@ func handleMQTTDisassociate(client mqtt.Client, msg mqtt.Message) {
 	sendRemoveLinkPartner(deviceID, strings.ToUpper(partner), partnerType)
 }
 
+// Presets like the MAX! Cube integration: comfort, eco, Window Open and On (30.5 °C) set that
+// temperature and keep the mode (auto: until the next switch point); boost starts a boost;
+// none ends a boost (back to the mode and setpoint from before) and otherwise switches to auto
+// (week program), as the Cube integration does.
+const (
+	presetWindowOpen = "Window Open"
+	presetOn         = "On"
+	onTemperature    = 30.5
+)
+
 func handleMQTTPresetCommand(client mqtt.Client, msg mqtt.Message) {
 	deviceID, ok := topicDeviceID(msg.Topic())
 	if !ok {
 		return
 	}
 	deviceID = strings.ToUpper(deviceID)
-	preset := strings.ToLower(strings.TrimSpace(string(msg.Payload())))
+	preset := strings.TrimSpace(string(msg.Payload()))
+	switch strings.ToLower(preset) {
+	case "window open", "window_open":
+		preset = presetWindowOpen
+	case "on":
+		preset = presetOn
+	default:
+		preset = strings.ToLower(preset)
+	}
 	cfg := getDeviceConfig(deviceID)
-	var modeBits byte
-	var targetTemp float64
 
 	configMutex.RLock()
-	eco, comfort, tempsKnown := cfg.EcoTemp, cfg.ComfortTemp, cfg.TempsKnown
+	eco, comfort, windowOpen, tempsKnown := cfg.EcoTemp, cfg.ComfortTemp, cfg.WindowOpenTemp, cfg.TempsKnown
 	configMutex.RUnlock()
-	if (preset == "eco" || preset == "comfort") && !tempsKnown {
-		slog.Error("Eco/comfort temperature of this device is unknown; import it first (max/<id>/config/import)", "device", deviceID, "preset", preset)
+	if (preset == "eco" || preset == "comfort" || preset == presetWindowOpen) && !tempsKnown {
+		slog.Error("Eco/comfort/window open temperature of this device is unknown; import it first (max/<id>/config/import)", "device", deviceID, "preset", preset)
 		return
 	}
 
+	stateMutex.RLock()
+	mode, setpoint, modeBeforeBoost, setpointBeforeBoost := "manual", 0.0, "", 0.0
+	if existing, ok := stateCache[deviceID]; ok {
+		mode, setpoint = existing.Mode, existing.Temperature
+		modeBeforeBoost, setpointBeforeBoost = existing.ModeBeforeBoost, existing.SetpointBeforeBoost
+	}
+	stateMutex.RUnlock()
+	// Temperature presets keep auto/manual; from boost or vacation they switch to manual
+	keepBits := modeStringToBits(mode)
+	if keepBits > 0x01 {
+		keepBits = 0x01
+	}
+
+	var modeBits byte
+	var targetTemp float64
 	switch preset {
 	case "eco":
-		modeBits = 0x01
-		targetTemp = eco
+		modeBits, targetTemp = keepBits, eco
 	case "comfort":
-		modeBits = 0x01
-		targetTemp = comfort
+		modeBits, targetTemp = keepBits, comfort
+	case presetWindowOpen:
+		modeBits, targetTemp = keepBits, windowOpen
+	case presetOn:
+		modeBits, targetTemp = keepBits, onTemperature
 	case "boost":
 		// Sent with temperature 0 (FHEM). The cached setpoint stays, so a later
 		// heat/none/auto command does not turn the boost value into a setpoint
-		modeBits = 0x03
+		modeBits, targetTemp = 0x03, setpoint
 	case "none", "":
-		// Clear preset: keep current mode/temp via heat/manual
-		modeBits = 0x01
-		stateMutex.RLock()
-		if existing, ok := stateCache[deviceID]; ok && existing.Temperature > 0 {
-			targetTemp = existing.Temperature
-		} else {
-			targetTemp = comfort
-		}
-		stateMutex.RUnlock()
 		preset = "none"
+		if mode == "boost" && modeBeforeBoost != "" && modeBeforeBoost != "boost" {
+			// End the boost: back to the mode and setpoint from before it
+			modeBits = modeStringToBits(modeBeforeBoost)
+			targetTemp = setpointBeforeBoost
+			if modeBits == 0x00 {
+				targetTemp = 0 // auto: week program
+			}
+			if modeBits == 0x02 {
+				modeBits = 0x00 // vacation cannot be restored without its end date: auto
+				targetTemp = 0
+			}
+		} else {
+			modeBits, targetTemp = 0x00, 0 // auto, week program
+		}
 	default:
 		slog.Warn("Unknown preset", "preset", preset)
 		return
 	}
 
 	tempVal := byte(targetTemp * 2)
+	if modeBits == 0x03 {
+		tempVal = 0
+	}
 	payloadByte := tempVal | (modeBits << 6)
+	modeStr := []string{"auto", "manual", "vacation", "boost"}[modeBits]
+	hvacMode := map[string]string{"auto": "auto", "manual": "heat", "vacation": "off", "boost": "heat"}[modeStr]
+	if modeStr == "manual" && targetTemp <= 4.5 {
+		hvacMode = "off"
+	}
+
+	maybeWakeDevice(deviceID)
+	if ackTracker != nil {
+		ackTracker.TrackSetpoint(deviceID, targetTemp, modeStr, hvacMode)
+	}
 	sendCommand(deviceID, 0x40, []byte{payloadByte}, fmt.Sprintf("Set Preset %s", preset))
 
 	stateMutex.Lock()
 	if existing, ok := stateCache[deviceID]; ok {
 		existing.PresetMode = preset
-		if preset != "boost" {
+		if modeBits == 0x03 && existing.Mode != "boost" {
+			existing.ModeBeforeBoost, existing.SetpointBeforeBoost = existing.Mode, existing.Temperature
+		}
+		if targetTemp > 0 && modeBits != 0x03 {
 			existing.Temperature = targetTemp
 		}
-		if preset == "boost" {
-			existing.Mode = "boost"
-			existing.HVACMode = "heat"
-		} else if preset != "none" {
-			existing.Mode = "manual"
-			existing.HVACMode = "heat"
-		}
+		existing.Mode, existing.HVACMode = modeStr, hvacMode
 		pub := *existing
 		stateMutex.Unlock()
 		publishState(deviceID, &pub)
@@ -1495,7 +1583,7 @@ func handleMQTTPresetCommand(client mqtt.Client, msg mqtt.Message) {
 		stateMutex.Unlock()
 	}
 
-	if verificationMgr != nil && preset != "boost" {
+	if verificationMgr != nil && modeBits != 0x03 && targetTemp > 0 {
 		verificationMgr.AddVerification(deviceID, targetTemp, func() {
 			sendCommand(deviceID, 0x40, []byte{payloadByte}, fmt.Sprintf("Retry Preset %s", preset))
 		})
