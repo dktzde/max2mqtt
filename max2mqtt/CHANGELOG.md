@@ -1,3 +1,7 @@
+## Unreleased
+
+- Ignore actual temperature 0 (and values below 1 °C) in thermostat status messages, as FHEM does, and keep the last measured value instead of showing 0 °C and `heating`
+
 ## 1.3.2
 
 - Apply expected setpoint on short device Ack (FHEM AckSetTemperature) — verification no longer requires a full status payload
