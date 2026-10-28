@@ -83,6 +83,7 @@ func main() {
 
 	// Start periodic time sync (broadcasts time on startup and every 24 hours)
 	go startPeriodicTimeSync()
+	go startCreditPolling()
 
 	// 4. Handle Signals
 	sigChan := make(chan os.Signal, 1)
@@ -340,6 +341,7 @@ func processSerialLine(text string, out chan<- string) {
 		if matched {
 			slog.Debug("CUL credit report", "credits", credits, "cul_queue", queueLen, "raw", text)
 			txMgr.UpdateCredits(credits, queueLen)
+			publishCredits(credits, queueLen)
 			txMgr.SignalCreditResponse()
 			return
 		}
@@ -908,14 +910,19 @@ func publishBridgeDiscovery() {
 		"entity_category": "config",
 		"command_topic":   "max/bridge/pair",
 		"payload_press":   "on",
-		"device": map[string]string{
-			"identifiers":  "max_bridge",
-			"manufacturer": "max2mqtt",
-			"model":        "MAX! to MQTT Bridge",
-			"name":         "MAX! Bridge",
-		},
+		"device":          bridgeDeviceInfo(),
 	}
 	publishDiscovery(topic, payload)
+	publishDutyCycleDiscovery(bridgeDeviceInfo())
+}
+
+func bridgeDeviceInfo() map[string]string {
+	return map[string]string{
+		"identifiers":  "max_bridge",
+		"manufacturer": "max2mqtt",
+		"model":        "MAX! to MQTT Bridge",
+		"name":         "MAX! Bridge",
+	}
 }
 
 func publishState(srcAddr string, data *MaxDeviceData) {
