@@ -236,6 +236,8 @@ func setupMQTT() {
 		c.Subscribe("max/+/disassociate/set", 0, handleMQTTDisassociate)
 		c.Subscribe("max/+/factory_reset/set", 0, handleMQTTFactoryReset)
 		c.Subscribe("max/+/week_profile/set", 0, handleMQTTWeekProfile)
+		c.Subscribe("max/+/config/import", 0, handleMQTTConfigImport)
+		c.Subscribe("max/+/config/set", 0, handleMQTTConfigSet)
 		publishBridgeDiscovery()
 		publishBridgeStatus()
 	})
@@ -1432,8 +1434,12 @@ func handleMQTTPresetCommand(client mqtt.Client, msg mqtt.Message) {
 	var targetTemp float64
 
 	configMutex.RLock()
-	eco, comfort := cfg.EcoTemp, cfg.ComfortTemp
+	eco, comfort, tempsKnown := cfg.EcoTemp, cfg.ComfortTemp, cfg.TempsKnown
 	configMutex.RUnlock()
+	if (preset == "eco" || preset == "comfort") && !tempsKnown {
+		slog.Error("Eco/comfort temperature of this device is unknown; import it first (max/<id>/config/import)", "device", deviceID, "preset", preset)
+		return
+	}
 
 	switch preset {
 	case "eco":
