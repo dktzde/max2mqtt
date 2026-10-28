@@ -211,7 +211,8 @@ USB sticks still use a path such as `/dev/serial/by-id/...` plus `baud_rate` as 
 | `GATEWAY_ID` | `gateway_id` | `123456` | Gateway address, 6 hex digits. Use your old Cube / FHEM `CUL_MAX` address to keep existing pairings, see [Start here](#start-here-gateway_id) |
 | `LOG_LEVEL` | `log_level` | `info` | Log verbosity (debug/info/warning/error) |
 | `DUTY_CYCLE_MIN_CREDITS` | `duty_cycle_min_credits` | `200` | Min credits to allow sending |
-| `COMMAND_TIMEOUT` | `command_timeout` | `1m` | Max time a command waits for duty cycle credits before it is discarded (week profile messages: 120 min, Home Assistant notification after 60 min) |
+| `COMMAND_TIMEOUT` | `command_timeout` | `1m` | Max time a command waits for duty cycle credits before it is discarded (week profile messages are never discarded; Home Assistant notification after 60 min) |
+| `WEEK_PROFILE_RESERVE_PERCENT` | `week_profile_reserve_percent` | `20` | Week profile messages are only sent while the credits are above `duty_cycle_min_credits` plus this share of the CUL's maximum (900), so direct commands always find credits |
 | `MAX_CUL_QUEUE` | `max_cul_queue` | `5` | Max number of commands allowed in CUL stick buffer before throttling |
 | `TX_CHECK_PERIOD` | `tx_check_period` | `1m` | Duration to wait for device verification before retrying Set Temp commands |
 

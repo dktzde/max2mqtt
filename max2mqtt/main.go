@@ -32,6 +32,7 @@ type Config struct {
 	CommandTimeout      string `json:"command_timeout"`
 	MaxCulQueue         int    `json:"max_cul_queue"`
 	TxCheckPeriod       string `json:"tx_check_period"`
+	WeekProfileReserve  int    `json:"week_profile_reserve_percent"` // % of the CUL's credits week profiles leave for direct commands
 }
 
 // Global state
@@ -119,6 +120,7 @@ func loadConfig() {
 		CommandTimeout:      "1m",
 		MaxCulQueue:         5,
 		TxCheckPeriod:       "1m",
+		WeekProfileReserve:  20,
 	}
 
 	// Try loading from options.json (Standard HA Add-on location)
@@ -149,6 +151,7 @@ func loadEnvOverrides() {
 	loadEnvString("COMMAND_TIMEOUT", &config.CommandTimeout)
 	loadEnvInt("MAX_CUL_QUEUE", &config.MaxCulQueue)
 	loadEnvString("TX_CHECK_PERIOD", &config.TxCheckPeriod)
+	loadEnvInt("WEEK_PROFILE_RESERVE_PERCENT", &config.WeekProfileReserve)
 	loadEnvString("MQTT_BROKER", &config.MQTTBroker)
 	loadEnvString("MQTT_USER", &config.MQTTUser)
 	loadEnvString("MQTT_PASS", &config.MQTTPass)
@@ -201,6 +204,7 @@ func setupLogging() {
 		"command_timeout", config.CommandTimeout,
 		"max_cul_queue", config.MaxCulQueue,
 		"tx_check_period", config.TxCheckPeriod,
+		"week_profile_reserve_percent", config.WeekProfileReserve,
 	)
 }
 
