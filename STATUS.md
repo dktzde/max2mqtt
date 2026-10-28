@@ -2,10 +2,11 @@
 
 Handover file for the maintainer and for Claude Code sessions working on this repository. **Read this first, and update it after every step** (state, decisions, next steps), so the next session can continue without the chat history.
 
-Last updated: 2026-10-28 (1.3.6: duty cycle and availability)
+Last updated: 2026-10-28 (1.3.7: config values and week profile)
 
 ## Current state
 
+- **1.3.7 (2026-10-28)** on our `main`: branches `config-unknown-values` and `week-profile-fixes` (from `upstream/main`, with tests), plus on the release branch: vacation needs a temperature while eco is unknown. 1.3.6 contained a built binary `max2mqtt/max2mqtt` by mistake (removed, now in `max2mqtt/.gitignore`; build with `go build -o /dev/null ./...`). Not checked with a real CUL yet.
 - **1.3.6 (2026-10-28)** on our `main`: branches `tx-wait-for-credits`, `bridge-availability`, `duty-cycle-sensor` (each from `upstream/main`, with tests). The merge adds the availability to this fork's own entities (RF error, valve, vacation, shutter contact). Not checked with a real CUL yet.
 - **1.3.5 (2026-10-28)** on our `main`: four fix branches from `upstream/main` (`fix-preset-after-boost`, `fix-boost-setpoint`, `fix-zero-actual-temperature`, `fix-auto-week-program`), each with a test. Found by a review against the MAX! Cube integration it is meant to replace. Not checked with a real CUL yet.
 - **1.3.4 (2026-10-26)** on our `main`: vacation mode from branch `vacation-mode` (`1efaa13`, from `upstream/main`): `max/<id>/vacation/set` with `{"temperature": 12, "until": "YYYY-MM-DD HH:MM"}` (temperature optional, default eco; `off` ends it), SetTemperature `0x40` with the three until bytes (FHEM `10_MAX.pm`); `until` decoded into `max/<id>/state` and a "Vacation Until" sensor; in vacation mode bytes 3-5 are no longer read as actual temperature. Test `vacation_test.go` (encoding checked against the example `9D0B..` in Bouni/max-cube-protocol `S-Message.md`). `go vet`/`go test`/`go build` passed on the branch and on the merge. Not installed on the device yet, not checked with a real thermostat.

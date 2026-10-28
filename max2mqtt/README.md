@@ -52,6 +52,12 @@ Who made what, newest first. Full list with dates: [CHANGELOG](CHANGELOG.md).
 - **[Dad-Ju/max2mqtt](https://github.com/Dad-Ju/max2mqtt)** (2026-10-15 to 2026-10-16): 1.2.0 to 1.3.2
 - **Original by [pwurbs/max2mqtt](https://github.com/pwurbs/max2mqtt)** (December 2025 to January 2026): 1.0.0 and 1.1.0
 
+### v1.3.7 (2026-10-28, this fork) — Config values and week profile
+
+- **Unknown config values:** the bridge cannot read a device's settings. Until it knows them, the config entities show *unknown*, and changing a single value is refused instead of overwriting the device's other settings with defaults (temperature group `0x11`, valve group `0x12`). New topics `max/<id>/config/import` (store the real values, e.g. from a MAX! Cube, without sending) and `max/<id>/config/set` (store and send). Presets eco/comfort, and vacation without a temperature, need known values
+- **Week profile:** the second message of a day is only sent when the day has more than 7 control points (as FHEM does); unchanged days are skipped; one text entity per day in FHEM syntax (`17,06:00,21,22:00,17`) replaces the JSON text entity that could not hold a week (255 characters); new topics `max/<id>/programme/set` (MAX! Cube `set_programme` format) and `max/<id>/programme/import` (store only); the profile is published on `max/<id>/programme` and `max/<id>/week_profile/<day>`
+- Remove a build output committed by mistake in 1.3.6
+
 ### v1.3.6 (2026-10-28, this fork) — Duty cycle and availability
 
 - **Wait for duty cycle credits:** a command that finds too few credits (or a busy CUL queue) is no longer dropped at once; the bridge queries again every 15 s and sends it when there are enough, until `command_timeout`. Week profile messages wait up to 30 minutes as a bulk transfer and let setpoint, mode and config commands go first
