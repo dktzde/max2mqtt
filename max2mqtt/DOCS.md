@@ -256,9 +256,11 @@ MAX! devices cannot be asked for their week profile, so the bridge shows the las
 A day with up to 7 control points takes one radio message, more take two. Messages wait for duty cycle credits if needed.
 State: `max/<id>/week_profile/<day>` (FHEM syntax, shown by the text entities) and `max/<id>/programme` (whole week, MAX! Cube format).
 
-### Mode after restart
+### After a restart
 
-The bridge initializes climate mode as `heat` (Manual) when no cached state exists. Switch back to Auto in the HA UI if needed.
+The bridge keeps its device data in `/data/devices.json` (the add-on's persistent folder): last state (mode, setpoint, actual temperature), valve position, room/group ID, device type, config values and whether they are known, and the week profile.
+It is written at most every 30 s when something changed, and on shutdown. Standalone (Docker): set `DEVICE_DATA_FILE` to a persistent path.
+Only a device the bridge has never heard of starts as `heat` (manual) until its first status message.
 
 ### Debug logging
 

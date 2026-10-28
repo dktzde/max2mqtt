@@ -69,6 +69,10 @@ func main() {
 
 	fmt.Printf("time=\"%s\" level=info msg=\"Starting MAX! to MQTT Bridge\"\n", time.Now().Format(time.RFC3339))
 
+	// 1.2. Device data from the last run (state, config, week profile)
+	loadDeviceData()
+	go startDeviceDataSaver()
+
 	// 1.5. Duty Cycle + Ack tracker (push confirmation, no poll)
 	initTransmissionManager()
 	initAckTracker()
@@ -96,6 +100,7 @@ func main() {
 			handleSerialMessage(msg)
 		case <-sigChan:
 			slog.Warn("Shutting down...")
+			saveDeviceData()
 			setCULOnline(false)
 			return
 		}
@@ -551,6 +556,9 @@ func updateDeviceState(srcAddr string, newData *MaxDeviceData) {
 	}
 	if newData.CurrentTemperature != nil {
 		existing.CurrentTemperature = newData.CurrentTemperature
+	}
+	if newData.ValvePosition != nil {
+		existing.ValvePosition = newData.ValvePosition
 	}
 
 	if newData.Mode != "" {

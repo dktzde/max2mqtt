@@ -1,3 +1,7 @@
+## Unreleased
+
+- Keep device data across restarts in `/data/devices.json`: state (mode, setpoint), valve position, room/group ID, device type, config values (and whether they are known), week profile
+
 ## 1.3.7
 
 <sub>2026-10-28</sub>
