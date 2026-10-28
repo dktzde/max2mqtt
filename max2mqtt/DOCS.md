@@ -142,7 +142,23 @@ CUL delivers device Acks as soon as the thermostat answers. Flow:
 3. Device Ack (`0x02`) or status push confirms; bridge re-publishes authoritative state
 4. If no Ack within ~30s, previous values are restored
 
-There is no “query all config” over CUL. After a bridge restart, retained MQTT + in-memory defaults apply until the next successful set/Ack.
+There is no “query all config” over CUL: MAX! devices cannot be asked for their settings.
+
+### Unknown config values (import first)
+
+The temperature group (`0x11`: comfort, eco, max, min, measurement offset, window open temperature and duration) and the valve group (`0x12`: boost duration and valve position, decalcification day and hour, max valve setting, valve offset) are always sent complete.
+As long as the bridge does not know a device's real values, the config entities show *unknown*, and changing a single value is refused (error in the log) – it would overwrite the device's other settings with defaults.
+The presets eco and comfort are refused for the same reason.
+
+Tell the bridge the real values once, e.g. from your MAX! Cube or FHEM, with a complete group (or both):
+
+```bash
+# store only, nothing is sent to the device
+mosquitto_pub -t "max/0A1B2C/config/import" -m '{"comfort_temp": 21, "eco_temp": 17, "max_temp": 30.5, "min_temp": 4.5, "measurement_offset": 0, "window_open_temp": 12, "window_open_duration": 15, "boost_duration": 5, "boost_valve_position": 80, "decalc_day": "Sat", "decalc_hour": 12, "max_valve_setting": 100, "valve_offset": 0}'
+```
+
+`max/<id>/config/set` takes the same JSON, stores it and sends it to the device (for new devices, or to reset all values at once).
+`window_open_duration` is in minutes (steps of 5), `decalc_day` is `Sat` … `Fri`.
 
 > **Important**: Don't change many config values in a short time — duty-cycle credits will block TX.
 

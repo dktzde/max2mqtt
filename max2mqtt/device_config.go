@@ -25,6 +25,9 @@ type DeviceConfig struct {
 	IsWall             bool    `json:"is_wall"`
 	IsRadiator         bool    `json:"is_radiator"`
 	PresetMode         string  `json:"preset_mode"` // none | eco | comfort | boost
+	// TempsKnown: the ConfigTemperatures values above are the device's real values
+	// (imported, or written by the bridge). MAX! devices cannot be asked for them.
+	TempsKnown bool `json:"temps_known"`
 }
 
 // ValveConfig stores ConfigValve (0x12) parameters for radiator thermostats.
@@ -35,6 +38,8 @@ type ValveConfig struct {
 	DecalcHour         int    `json:"decalc_hour"`          // 0-23
 	MaxValveSetting    int    `json:"max_valve_setting"`    // 0-100
 	ValveOffset        int    `json:"valve_offset"`         // 0-100
+	// ValveKnown: the ConfigValve values above are the device's real values (see TempsKnown)
+	ValveKnown bool `json:"valve_known"`
 }
 
 var (
@@ -241,13 +246,13 @@ func discoveryDeviceInfo(srcAddr string) map[string]string {
 }
 
 func publishConfigEntities(srcAddr string) {
-	publishNumberDiscovery(srcAddr, "eco_temp", "Eco Temperature", "mdi:leaf", "°C", 4.5, 30.5, 0.5, "{{ value_json.eco_temp }}")
-	publishNumberDiscovery(srcAddr, "comfort_temp", "Comfort Temperature", "mdi:sofa", "°C", 4.5, 30.5, 0.5, "{{ value_json.comfort_temp }}")
-	publishNumberDiscovery(srcAddr, "max_temp", "Maximum Temperature", "mdi:thermometer-high", "°C", 4.5, 30.5, 0.5, "{{ value_json.max_temp }}")
-	publishNumberDiscovery(srcAddr, "min_temp", "Minimum Temperature", "mdi:thermometer-low", "°C", 4.5, 30.5, 0.5, "{{ value_json.min_temp }}")
-	publishNumberDiscovery(srcAddr, "measurement_offset", "Measurement Offset", "mdi:plus-minus", "°C", -3.5, 3.5, 0.1, "{{ value_json.measurement_offset }}")
-	publishNumberDiscovery(srcAddr, "window_open_temp", "Window Open Temperature", "mdi:window-open", "°C", 4.5, 30.5, 0.5, "{{ value_json.window_open_temp }}")
-	publishNumberDiscovery(srcAddr, "window_open_duration", "Window Open Duration", "mdi:timer", "min", 0, 60, 5, "{{ value_json.window_open_duration }}")
+	publishNumberDiscovery(srcAddr, "eco_temp", "Eco Temperature", "mdi:leaf", "°C", 4.5, 30.5, 0.5, knownTemplate("eco_temp", "temps_known"))
+	publishNumberDiscovery(srcAddr, "comfort_temp", "Comfort Temperature", "mdi:sofa", "°C", 4.5, 30.5, 0.5, knownTemplate("comfort_temp", "temps_known"))
+	publishNumberDiscovery(srcAddr, "max_temp", "Maximum Temperature", "mdi:thermometer-high", "°C", 4.5, 30.5, 0.5, knownTemplate("max_temp", "temps_known"))
+	publishNumberDiscovery(srcAddr, "min_temp", "Minimum Temperature", "mdi:thermometer-low", "°C", 4.5, 30.5, 0.5, knownTemplate("min_temp", "temps_known"))
+	publishNumberDiscovery(srcAddr, "measurement_offset", "Measurement Offset", "mdi:plus-minus", "°C", -3.5, 3.5, 0.1, knownTemplate("measurement_offset", "temps_known"))
+	publishNumberDiscovery(srcAddr, "window_open_temp", "Window Open Temperature", "mdi:window-open", "°C", 4.5, 30.5, 0.5, knownTemplate("window_open_temp", "temps_known"))
+	publishNumberDiscovery(srcAddr, "window_open_duration", "Window Open Duration", "mdi:timer", "min", 0, 60, 5, knownTemplate("window_open_duration", "temps_known"))
 	publishSelectDiscovery(srcAddr, "display_mode", "Display Mode", "mdi:thermometer-lines",
 		[]string{"Setpoint", "Actual"}, "{{ value_json.display_mode }}")
 	publishNumberDiscovery(srcAddr, "group_id", "Group ID", "mdi:group", "", 0, 255, 1, "{{ value_json.group_id }}")
@@ -272,13 +277,13 @@ func publishConfigEntities(srcAddr string) {
 	isRadiator := cfg.IsRadiator || !cfg.IsWall
 	configMutex.RUnlock()
 	if isRadiator {
-		publishNumberDiscovery(srcAddr, "boost_duration", "Boost Duration", "mdi:rocket-launch", "min", 0, 60, 5, "{{ value_json.boost_duration }}")
-		publishNumberDiscovery(srcAddr, "boost_valve_position", "Boost Valve Position", "mdi:valve", "%", 0, 100, 5, "{{ value_json.boost_valve_position }}")
+		publishNumberDiscovery(srcAddr, "boost_duration", "Boost Duration", "mdi:rocket-launch", "min", 0, 60, 5, knownTemplate("boost_duration", "valve_known"))
+		publishNumberDiscovery(srcAddr, "boost_valve_position", "Boost Valve Position", "mdi:valve", "%", 0, 100, 5, knownTemplate("boost_valve_position", "valve_known"))
 		publishSelectDiscovery(srcAddr, "decalc_day", "Decalcification Day", "mdi:calendar",
-			[]string{"Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"}, "{{ value_json.decalc_day }}")
-		publishNumberDiscovery(srcAddr, "decalc_hour", "Decalcification Hour", "mdi:clock", "h", 0, 23, 1, "{{ value_json.decalc_hour }}")
-		publishNumberDiscovery(srcAddr, "max_valve_setting", "Max Valve Setting", "mdi:valve", "%", 0, 100, 1, "{{ value_json.max_valve_setting }}")
-		publishNumberDiscovery(srcAddr, "valve_offset", "Valve Offset", "mdi:valve", "%", 0, 100, 1, "{{ value_json.valve_offset }}")
+			[]string{"Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"}, knownTemplate("decalc_day", "valve_known"))
+		publishNumberDiscovery(srcAddr, "decalc_hour", "Decalcification Hour", "mdi:clock", "h", 0, 23, 1, knownTemplate("decalc_hour", "valve_known"))
+		publishNumberDiscovery(srcAddr, "max_valve_setting", "Max Valve Setting", "mdi:valve", "%", 0, 100, 1, knownTemplate("max_valve_setting", "valve_known"))
+		publishNumberDiscovery(srcAddr, "valve_offset", "Valve Offset", "mdi:valve", "%", 0, 100, 1, knownTemplate("valve_offset", "valve_known"))
 	}
 }
 
@@ -362,8 +367,20 @@ func hexDecodeAddr(addr string) ([]byte, error) {
 	return b, nil
 }
 
+// knownTemplate shows a config value only when it is known; otherwise Home Assistant shows "unknown"
+func knownTemplate(field, knownFlag string) string {
+	return fmt.Sprintf("{{ value_json.%s if value_json.%s else None }}", field, knownFlag)
+}
+
 func beginConfigTempsChange(deviceID, field string, mutate func(*DeviceConfig)) {
 	prev := snapshotDevice(deviceID)
+	if !prev.Temps.TempsKnown {
+		// ConfigTemperatures always writes all 7 values: with unknown values this would
+		// overwrite the device's other settings with defaults
+		slog.Error("Config temperatures of this device are unknown; not sending a single value. Import them first (max/<id>/config/import) or set all of them (max/<id>/config/set)", "device", deviceID, "field", field)
+		publishDeviceConfig(deviceID)
+		return
+	}
 	next := prev
 	mutate(&next.Temps)
 	ackTracker.TrackConfig(deviceID, 0x11, field, prev, next)
@@ -372,6 +389,11 @@ func beginConfigTempsChange(deviceID, field string, mutate func(*DeviceConfig)) 
 
 func beginValveChange(deviceID, field string, mutate func(*ValveConfig)) {
 	prev := snapshotDevice(deviceID)
+	if !prev.Valve.ValveKnown {
+		slog.Error("Valve config of this device is unknown; not sending a single value. Import it first (max/<id>/config/import) or set all of it (max/<id>/config/set)", "device", deviceID, "field", field)
+		publishDeviceConfig(deviceID)
+		return
+	}
 	next := prev
 	mutate(&next.Valve)
 	ackTracker.TrackConfig(deviceID, 0x12, field, prev, next)

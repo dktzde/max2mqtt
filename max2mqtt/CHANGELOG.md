@@ -1,3 +1,7 @@
+## Unreleased
+
+- Config values the bridge does not know are shown as unknown, and a single change is refused instead of overwriting the device's other settings with defaults (temperature group `0x11`, valve group `0x12`); new topics `max/<id>/config/import` (store real values, e.g. from a MAX! Cube, without sending) and `max/<id>/config/set` (store and send); presets eco/comfort need known values
+
 ## 1.3.2
 
 - Apply expected setpoint on short device Ack (FHEM AckSetTemperature) — verification no longer requires a full status payload
