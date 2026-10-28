@@ -22,7 +22,7 @@ type QueuedCommand struct {
 }
 
 // bulkCommandTimeout is how long a bulk command may wait for duty cycle credits
-const bulkCommandTimeout = 30 * time.Minute
+const bulkCommandTimeout = 60 * time.Minute
 
 // creditRetryInterval is the pause between credit queries while a command waits for credits.
 // The CUL refills about 1 credit per second (1 % of an hour), a TX with wakeup preamble costs about 100.

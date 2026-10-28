@@ -1,3 +1,9 @@
+## 1.4.1
+
+<sub>2026-10-28</sub>
+
+- Week profile messages wait up to 60 minutes (before: 30) for duty cycle credits before they are discarded
+
 ## 1.4.0
 
 <sub>2026-10-28</sub>
