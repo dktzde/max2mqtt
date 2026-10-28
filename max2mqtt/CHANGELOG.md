@@ -1,3 +1,12 @@
+## 1.3.5
+
+<sub>2026-10-28</sub>
+
+- **Preset after boost:** the climate preset follows the device status: a boost that ends on the device (or an eco/comfort setpoint changed at the wheel) resets the preset to `none` instead of keeping `boost` until the next command from Home Assistant
+- **Boost setpoint:** boost is sent with temperature 0 (as FHEM does) and the cached setpoint is kept, so `heat`, preset `none` or `auto` after a boost from Home Assistant no longer set 30 °C
+- **Actual temperature 0:** status messages without a new measurement (actual temperature 0, or the rare values below 1 °C) keep the last measured value instead of showing 0 °C and `heating`
+- **Auto mode:** HVAC mode `auto` follows the week program (sent with temperature 0, like FHEM and the MAX! Cube) instead of holding the current setpoint until the next switch point
+
 ## 1.3.4
 
 <sub>2026-10-26</sub>

@@ -2,10 +2,11 @@
 
 Handover file for the maintainer and for Claude Code sessions working on this repository. **Read this first, and update it after every step** (state, decisions, next steps), so the next session can continue without the chat history.
 
-Last updated: 2026-10-26 (1.3.4: vacation mode)
+Last updated: 2026-10-28 (1.3.5: boost, preset and auto mode fixes)
 
 ## Current state
 
+- **1.3.5 (2026-10-28)** on our `main`: four fix branches from `upstream/main` (`fix-preset-after-boost`, `fix-boost-setpoint`, `fix-zero-actual-temperature`, `fix-auto-week-program`), each with a test. Found by a review against the MAX! Cube integration it is meant to replace. Not checked with a real CUL yet.
 - **1.3.4 (2026-10-26)** on our `main`: vacation mode from branch `vacation-mode` (`1efaa13`, from `upstream/main`): `max/<id>/vacation/set` with `{"temperature": 12, "until": "YYYY-MM-DD HH:MM"}` (temperature optional, default eco; `off` ends it), SetTemperature `0x40` with the three until bytes (FHEM `10_MAX.pm`); `until` decoded into `max/<id>/state` and a "Vacation Until" sensor; in vacation mode bytes 3-5 are no longer read as actual temperature. Test `vacation_test.go` (encoding checked against the example `9D0B..` in Bouni/max-cube-protocol `S-Message.md`). `go vet`/`go test`/`go build` passed on the branch and on the merge. Not installed on the device yet, not checked with a real thermostat.
 - **1.3.3 installed on the device since 2026-10-25, not started yet** (the add-on is stopped). Not checked yet: anything with a real CUL. Before the first start, `gateway_id` must be the RF address of the old MAX! Cube, so the devices need no re-pairing (guide at the top of `max2mqtt/README.md`).
 - **1.3.3 (2026-10-25)** is our `main`: Dad-Ju's 1.3.2 plus three feature branches, merged with merge commits:

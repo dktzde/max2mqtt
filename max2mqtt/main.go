@@ -560,8 +560,10 @@ func updateDeviceState(srcAddr string, newData *MaxDeviceData) {
 	}
 	if newData.PresetMode != "" {
 		existing.PresetMode = newData.PresetMode
-	} else if existing.Mode == "boost" {
-		existing.PresetMode = "boost"
+	} else if newData.Mode != "" {
+		// A status message carries the device's real mode: derive the preset from it,
+		// so a boost that ended on the device (or an eco/comfort setpoint changed there) is not kept
+		existing.PresetMode = presetFromStatus(srcAddr, existing.PresetMode, existing.Mode, existing.Temperature)
 	} else if existing.PresetMode == "" {
 		existing.PresetMode = "none"
 	}
@@ -595,6 +597,24 @@ func updateDeviceState(srcAddr string, newData *MaxDeviceData) {
 
 	slog.Info("Decoded Data", "src", srcAddr, "data", &dataToPublish)
 	publishState(srcAddr, &dataToPublish)
+}
+
+// presetFromStatus returns the preset for a received status: boost while the device is in
+// boost mode; eco/comfort only while the device stays in manual mode at that temperature; else none
+func presetFromStatus(srcAddr, prev, mode string, temp float64) string {
+	if mode == "boost" {
+		return "boost"
+	}
+	if mode == "manual" && (prev == "eco" || prev == "comfort") {
+		cfg := getDeviceConfig(srcAddr)
+		configMutex.RLock()
+		eco, comfort := cfg.EcoTemp, cfg.ComfortTemp
+		configMutex.RUnlock()
+		if (prev == "eco" && temp == eco) || (prev == "comfort" && temp == comfort) {
+			return prev
+		}
+	}
+	return "none"
 }
 
 type MaxDeviceData struct {
@@ -742,7 +762,9 @@ func decodeThermostatStatus(pktType int, payload []byte, isRadiator bool) *MaxDe
 	}
 
 	// Bytes 3-5: vacation end date/time in vacation mode, otherwise
-	// Bytes 3-4: Actual Temperature (if present)
+	// Bytes 3-4: Actual Temperature (if present).
+	// Radiator thermostats send 0 when they have no new measurement, and very rarely
+	// values like 0.2 °C; FHEM ignores both, so keep the last known temperature.
 	if modeBits == 0x02 {
 		if len(payload) >= 6 {
 			data.Until = decodeUntil(payload[3:6])
@@ -750,7 +772,9 @@ func decodeThermostatStatus(pktType int, payload []byte, isRadiator bool) *MaxDe
 	} else if len(payload) >= 5 {
 		rawTemp := int(payload[3]&0x01)<<8 | int(payload[4])
 		actualTemp := float64(rawTemp) / 10.0
-		data.CurrentTemperature = &actualTemp
+		if actualTemp >= 1 {
+			data.CurrentTemperature = &actualTemp
+		}
 	}
 
 	return data
@@ -1030,8 +1054,9 @@ func handleMQTTModeCommand(client mqtt.Client, msg mqtt.Message) {
 	switch mode {
 	case "auto":
 		modeBits = 0x00
-		// In Auto, we send the current encoded temp to effectively set a temporary override
-		// matching the current setpoint, preserving the value as requested.
+		// Auto with temperature 0 = follow the week program (FHEM "desiredTemperature auto",
+		// MAX! Cube). A temperature here would be an override until the next switch point.
+		targetTemp = 0
 	case "heat": // Manual
 		modeBits = 0x01
 		// Use current setpoint
@@ -1040,13 +1065,16 @@ func handleMQTTModeCommand(client mqtt.Client, msg mqtt.Message) {
 		targetTemp = 4.5
 	case "boost": // Boost
 		modeBits = 0x03
-		targetTemp = 30.0 // Usually ignored for boost but safe max
+		// Boost is sent with temperature 0 (FHEM); the device keeps its setpoint for the time after the boost
 	default:
 		slog.Warn("Unknown mode", "mode", mode)
 		return
 	}
 
 	tempVal := byte(targetTemp * 2)
+	if modeBits == 0x03 {
+		tempVal = 0
+	}
 	payloadByte := tempVal | (modeBits << 6)
 
 	modeStr := "manual"
@@ -1394,8 +1422,9 @@ func handleMQTTPresetCommand(client mqtt.Client, msg mqtt.Message) {
 		modeBits = 0x01
 		targetTemp = comfort
 	case "boost":
+		// Sent with temperature 0 (FHEM). The cached setpoint stays, so a later
+		// heat/none/auto command does not turn the boost value into a setpoint
 		modeBits = 0x03
-		targetTemp = 30.0
 	case "none", "":
 		// Clear preset: keep current mode/temp via heat/manual
 		modeBits = 0x01
@@ -1419,7 +1448,9 @@ func handleMQTTPresetCommand(client mqtt.Client, msg mqtt.Message) {
 	stateMutex.Lock()
 	if existing, ok := stateCache[deviceID]; ok {
 		existing.PresetMode = preset
-		existing.Temperature = targetTemp
+		if preset != "boost" {
+			existing.Temperature = targetTemp
+		}
 		if preset == "boost" {
 			existing.Mode = "boost"
 			existing.HVACMode = "heat"
