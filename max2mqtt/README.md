@@ -52,6 +52,12 @@ Who made what, newest first. Full list with dates: [CHANGELOG](CHANGELOG.md).
 - **[Dad-Ju/max2mqtt](https://github.com/Dad-Ju/max2mqtt)** (2026-10-15 to 2026-10-16): 1.2.0 to 1.3.2
 - **Original by [pwurbs/max2mqtt](https://github.com/pwurbs/max2mqtt)** (December 2025 to January 2026): 1.0.0 and 1.1.0
 
+### v1.3.6 (2026-10-28, this fork) — Duty cycle and availability
+
+- **Wait for duty cycle credits:** a command that finds too few credits (or a busy CUL queue) is no longer dropped at once; the bridge queries again every 15 s and sends it when there are enough, until `command_timeout`. Week profile messages wait up to 30 minutes as a bulk transfer and let setpoint, mode and config commands go first
+- **Availability:** `max/bridge/status` (`online`/`offline`, MQTT last will, lost CUL connection, shutdown); all entities use it and become unavailable instead of showing old values
+- **Duty cycle sensors:** "Duty Cycle" (%) and "TX Credits" on the bridge device, from the CUL credit report polled every minute
+
 ### v1.3.5 (2026-10-28, this fork) — Boost, preset and auto mode fixes
 
 - **Preset after boost:** the climate preset follows the device status: a boost that ends on the device (or an eco/comfort setpoint changed at the wheel) resets the preset to `none` instead of keeping `boost` until the next command from Home Assistant
@@ -127,6 +133,8 @@ These are the features:
     - **Shutter Contact**: Window binary sensor (open/closed) plus battery and RF error (diagnostic), state on `max/<id>/state`.
 -   **Pairing Mode**: Trigger via MQTT (`max/bridge/pair`) to pair new devices.
 -   **Association**: Trigger via MQTT (`max/bridge/associate`) to associate radiator valves with wall thermostats.
+-   **Availability**: `max/bridge/status` is `online` while the bridge is connected to MQTT and to the CUL, otherwise `offline` (MQTT last will, lost CUL connection, shutdown). All entities use it, so Home Assistant shows them as unavailable instead of keeping old values.
+-   **Duty cycle**: "Duty Cycle" (used part of the CUL credit budget in %, like the MAX! Cube's value) and "TX Credits" sensors on the bridge device, polled every minute (`X`, no radio traffic).
 -   **Retained Messages**: All MQTT messages (discovery and state) are published with the `retain` flag. This ensures Home Assistant keeps entities and their last known values across bridge or HA restarts.
 -   **Default State**: Newly discovered devices without explicit mode information default to `heat` mode to avoid "Invalid mode" errors in Home Assistant.
 -   **MAX! mode mapping**:
@@ -177,7 +185,7 @@ USB sticks still use a path such as `/dev/serial/by-id/...` plus `baud_rate` as 
 | `GATEWAY_ID` | `gateway_id` | `123456` | Gateway address, 6 hex digits. Use your old Cube / FHEM `CUL_MAX` address to keep existing pairings, see [Start here](#start-here-gateway_id) |
 | `LOG_LEVEL` | `log_level` | `info` | Log verbosity (debug/info/warning/error) |
 | `DUTY_CYCLE_MIN_CREDITS` | `duty_cycle_min_credits` | `200` | Min credits to allow sending |
-| `COMMAND_TIMEOUT` | `command_timeout` | `1m` | Max time a command waits in queue before being discarded due to e.g. duty cycle limits |
+| `COMMAND_TIMEOUT` | `command_timeout` | `1m` | Max time a command waits for duty cycle credits before it is discarded (week profile messages: 30 min) |
 | `MAX_CUL_QUEUE` | `max_cul_queue` | `5` | Max number of commands allowed in CUL stick buffer before throttling |
 | `TX_CHECK_PERIOD` | `tx_check_period` | `1m` | Duration to wait for device verification before retrying Set Temp commands |
 

@@ -1,3 +1,11 @@
+## 1.3.6
+
+<sub>2026-10-28</sub>
+
+- **Wait for duty cycle credits:** a command that finds too few credits (or a busy CUL queue) is no longer dropped at once; the bridge queries again every 15 s and sends it when there are enough, until `command_timeout`. Week profile messages wait up to 30 minutes as a bulk transfer and let setpoint, mode and config commands go first
+- **Availability:** `max/bridge/status` (`online`/`offline`, MQTT last will, lost CUL connection, shutdown); all entities use it and become unavailable instead of showing old values
+- **Duty cycle sensors:** "Duty Cycle" (%) and "TX Credits" on the bridge device, from the CUL credit report polled every minute
+
 ## 1.3.5
 
 <sub>2026-10-28</sub>

@@ -74,9 +74,9 @@ func sendWeekProfile(deviceID string, profile WeekProfileMQTT) {
 		// FHEM sends two packets: first 7 control points, then remaining 6
 		p1 := append([]byte{0x00 | dayNibble}, part[:14]...)
 		p2 := append([]byte{0x10 | dayNibble}, part[14:]...)
-		sendCommand(deviceID, 0x10, p1, fmt.Sprintf("WeekProfile %s part0", dayName))
+		sendBulkCommand(deviceID, 0x10, p1, fmt.Sprintf("WeekProfile %s part0", dayName))
 		time.Sleep(800 * time.Millisecond)
-		sendCommand(deviceID, 0x10, p2, fmt.Sprintf("WeekProfile %s part1", dayName))
+		sendBulkCommand(deviceID, 0x10, p2, fmt.Sprintf("WeekProfile %s part1", dayName))
 		time.Sleep(800 * time.Millisecond)
 	}
 	// Confirm after TX burst (CUL will deliver Acks asynchronously; also publish retained)
@@ -150,6 +150,5 @@ func publishWeekProfileDiscovery(srcAddr string) {
 		"mode":            "text",
 		"device":          discoveryDeviceInfo(srcAddr),
 	}
-	bytes, _ := json.Marshal(payload)
-	mqttClient.Publish(topic, 0, true, bytes)
+	publishDiscovery(topic, payload)
 }

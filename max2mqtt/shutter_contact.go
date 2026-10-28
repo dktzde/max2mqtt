@@ -120,7 +120,6 @@ func sendShutterDiscovery(srcAddr string) {
 		s.cfg["unique_id"] = deviceID + "_" + s.suffix
 		s.cfg["state_topic"] = stateTopic
 		s.cfg["device"] = deviceInfo
-		bytes, _ := json.Marshal(s.cfg)
-		mqttClient.Publish(fmt.Sprintf("homeassistant/binary_sensor/%s_%s/config", deviceID, s.suffix), 0, true, bytes)
+		publishDiscovery(fmt.Sprintf("homeassistant/binary_sensor/%s_%s/config", deviceID, s.suffix), s.cfg)
 	}
 }

@@ -83,6 +83,7 @@ func main() {
 
 	// Start periodic time sync (broadcasts time on startup and every 24 hours)
 	go startPeriodicTimeSync()
+	go startCreditPolling()
 
 	// 4. Handle Signals
 	sigChan := make(chan os.Signal, 1)
@@ -95,6 +96,7 @@ func main() {
 			handleSerialMessage(msg)
 		case <-sigChan:
 			slog.Warn("Shutting down...")
+			setCULOnline(false)
 			return
 		}
 	}
@@ -206,6 +208,8 @@ func setupMQTT() {
 	}
 	opts.SetClientID("max2mqtt_bridge")
 	opts.SetAutoReconnect(true)
+	// Entities become unavailable when the bridge loses its MQTT connection
+	opts.SetWill(bridgeStatusTopic, payloadOffline, 1, true)
 	opts.SetOnConnectHandler(func(c mqtt.Client) {
 		slog.Info("Connected to MQTT Broker")
 		c.Subscribe("max/+/set", 0, handleMQTTCommand)
@@ -233,6 +237,7 @@ func setupMQTT() {
 		c.Subscribe("max/+/factory_reset/set", 0, handleMQTTFactoryReset)
 		c.Subscribe("max/+/week_profile/set", 0, handleMQTTWeekProfile)
 		publishBridgeDiscovery()
+		publishBridgeStatus()
 	})
 
 	mqttClient = mqtt.NewClient(opts)
@@ -251,6 +256,7 @@ func serialReaderLoop(out chan<- string, in <-chan string) {
 		}
 
 		initializeCUL(port)
+		setCULOnline(true)
 
 		// Start Writer Routine for this connection
 		stopWriter := make(chan struct{})
@@ -263,6 +269,7 @@ func serialReaderLoop(out chan<- string, in <-chan string) {
 		}
 
 		close(stopWriter)
+		setCULOnline(false)
 		slog.Warn("CUL connection lost or closed. Reconnecting...")
 		port.Close()
 		time.Sleep(2 * time.Second)
@@ -334,6 +341,7 @@ func processSerialLine(text string, out chan<- string) {
 		if matched {
 			slog.Debug("CUL credit report", "credits", credits, "cul_queue", queueLen, "raw", text)
 			txMgr.UpdateCredits(credits, queueLen)
+			publishCredits(credits, queueLen)
 			txMgr.SignalCreditResponse()
 			return
 		}
@@ -830,8 +838,7 @@ func sendDiscovery(srcAddr string) {
 		"action_template":              "{{ value_json.get('hvac_action') }}",
 		"device":                       deviceInfo,
 	}
-	bytes, _ := json.Marshal(climatePayload)
-	mqttClient.Publish(climateTopic, 0, true, bytes)
+	publishDiscovery(climateTopic, climatePayload)
 
 	battTopic := fmt.Sprintf("homeassistant/binary_sensor/%s_battery/config", deviceID)
 	battPayload := map[string]interface{}{
@@ -842,8 +849,7 @@ func sendDiscovery(srcAddr string) {
 		"value_template": "{{ 'ON' if value_json.get('battery') == 'low' else 'OFF' }}",
 		"device":         deviceInfo,
 	}
-	bytes, _ = json.Marshal(battPayload)
-	mqttClient.Publish(battTopic, 0, true, bytes)
+	publishDiscovery(battTopic, battPayload)
 
 	rfTopic := fmt.Sprintf("homeassistant/binary_sensor/%s_rf_error/config", deviceID)
 	rfPayload := map[string]interface{}{
@@ -855,8 +861,7 @@ func sendDiscovery(srcAddr string) {
 		"value_template":  "{{ 'ON' if value_json.get('rf_error') else 'OFF' }}",
 		"device":          deviceInfo,
 	}
-	bytes, _ = json.Marshal(rfPayload)
-	mqttClient.Publish(rfTopic, 0, true, bytes)
+	publishDiscovery(rfTopic, rfPayload)
 
 	if isRadiatorDevice(srcAddr) {
 		valveTopic := fmt.Sprintf("homeassistant/sensor/%s_valve_position/config", deviceID)
@@ -869,8 +874,7 @@ func sendDiscovery(srcAddr string) {
 			"state_topic":         fmt.Sprintf(TopicFormatValve, srcAddr),
 			"device":              deviceInfo,
 		}
-		bytes, _ = json.Marshal(valvePayload)
-		mqttClient.Publish(valveTopic, 0, true, bytes)
+		publishDiscovery(valveTopic, valvePayload)
 	}
 
 	untilTopic := fmt.Sprintf("homeassistant/sensor/%s_vacation_until/config", deviceID)
@@ -882,8 +886,7 @@ func sendDiscovery(srcAddr string) {
 		"value_template": "{{ value_json.get('until') or 'None' }}",
 		"device":         deviceInfo,
 	}
-	bytes, _ = json.Marshal(untilPayload)
-	mqttClient.Publish(untilTopic, 0, true, bytes)
+	publishDiscovery(untilTopic, untilPayload)
 
 	publishConfigEntities(srcAddr)
 	publishWeekProfileDiscovery(srcAddr)
@@ -907,15 +910,19 @@ func publishBridgeDiscovery() {
 		"entity_category": "config",
 		"command_topic":   "max/bridge/pair",
 		"payload_press":   "on",
-		"device": map[string]string{
-			"identifiers":  "max_bridge",
-			"manufacturer": "max2mqtt",
-			"model":        "MAX! to MQTT Bridge",
-			"name":         "MAX! Bridge",
-		},
+		"device":          bridgeDeviceInfo(),
 	}
-	bytes, _ := json.Marshal(payload)
-	mqttClient.Publish(topic, 0, true, bytes)
+	publishDiscovery(topic, payload)
+	publishDutyCycleDiscovery(bridgeDeviceInfo())
+}
+
+func bridgeDeviceInfo() map[string]string {
+	return map[string]string{
+		"identifiers":  "max_bridge",
+		"manufacturer": "max2mqtt",
+		"model":        "MAX! to MQTT Bridge",
+		"name":         "MAX! Bridge",
+	}
 }
 
 func publishState(srcAddr string, data *MaxDeviceData) {
@@ -1125,6 +1132,16 @@ func gatewayAddrHex() string {
 
 // sendCommand constructs and sends a MAX! message via CUL
 func sendCommand(dstAddr string, typeByte byte, payload []byte, description string) {
+	queueCommand(dstAddr, typeByte, payload, description, false)
+}
+
+// sendBulkCommand sends one message of a long transfer (week profile): it may wait longer
+// for duty cycle credits and lets normal commands go first
+func sendBulkCommand(dstAddr string, typeByte byte, payload []byte, description string) {
+	queueCommand(dstAddr, typeByte, payload, description, true)
+}
+
+func queueCommand(dstAddr string, typeByte byte, payload []byte, description string, bulk bool) {
 	dstAddr = strings.ToUpper(dstAddr)
 	cnt := nextMsgCounter()
 	srcBytes := getGatewayAddress()
@@ -1176,7 +1193,11 @@ func sendCommand(dstAddr string, typeByte byte, payload []byte, description stri
 
 	if txMgr != nil {
 		descWithCnt := fmt.Sprintf("%s (Cnt:%d grp:%d)", description, cnt, groupID)
-		txMgr.Enqueue(dstAddr, cmd, descWithCnt)
+		if bulk {
+			txMgr.EnqueueBulk(dstAddr, cmd, descWithCnt)
+		} else {
+			txMgr.Enqueue(dstAddr, cmd, descWithCnt)
+		}
 	} else {
 		select {
 		case serialWrite <- cmd:
