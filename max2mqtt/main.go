@@ -859,8 +859,7 @@ func sendDiscovery(srcAddr string) {
 		"value_template":  "{{ 'ON' if value_json.get('rf_error') else 'OFF' }}",
 		"device":          deviceInfo,
 	}
-	bytes, _ = json.Marshal(rfPayload)
-	mqttClient.Publish(rfTopic, 0, true, bytes)
+	publishDiscovery(rfTopic, rfPayload)
 
 	if isRadiatorDevice(srcAddr) {
 		valveTopic := fmt.Sprintf("homeassistant/sensor/%s_valve_position/config", deviceID)
@@ -873,8 +872,7 @@ func sendDiscovery(srcAddr string) {
 			"state_topic":         fmt.Sprintf(TopicFormatValve, srcAddr),
 			"device":              deviceInfo,
 		}
-		bytes, _ = json.Marshal(valvePayload)
-		mqttClient.Publish(valveTopic, 0, true, bytes)
+		publishDiscovery(valveTopic, valvePayload)
 	}
 
 	untilTopic := fmt.Sprintf("homeassistant/sensor/%s_vacation_until/config", deviceID)
@@ -886,8 +884,7 @@ func sendDiscovery(srcAddr string) {
 		"value_template": "{{ value_json.get('until') or 'None' }}",
 		"device":         deviceInfo,
 	}
-	bytes, _ = json.Marshal(untilPayload)
-	mqttClient.Publish(untilTopic, 0, true, bytes)
+	publishDiscovery(untilTopic, untilPayload)
 
 	publishConfigEntities(srcAddr)
 	publishWeekProfileDiscovery(srcAddr)
