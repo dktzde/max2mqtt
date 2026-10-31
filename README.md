@@ -61,3 +61,7 @@ gateway_id: "0A1B2C"   # old Cube / FHEM address, see above
 ```
 
 See [Add-On ReadMe](max2mqtt/README.md) and [Documentation](max2mqtt/DOCS.md).
+
+---
+
+*Built with the help of [Claude Code in Home Assistant](https://github.com/dktzde/hass-claude-code), the add-on that makes developing right next to your own configuration a pleasure. Every feature is tested on my own CUN with the MAX! thermostats and window sensors I use every day, before it lands here. Within the 1 % duty cycle, of course, so Claude had to learn patience too.*
