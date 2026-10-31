@@ -1,0 +1,56 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit settings: reviews the Go add-on with few and relevant comments.
+# Free for public repositories. Docs: https://docs.coderabbit.ai/reference/configuration
+# This file lives only on our main, like STATUS.md and CLAUDE.md; branches for upstream PRs never contain it.
+language: en-US
+
+reviews:
+  # quiet = only important findings, chill = balanced, assertive = many (nitpicky)
+  profile: chill
+  request_changes_workflow: false
+  high_level_summary: true
+  collapse_walkthrough: true
+  changed_files_summary: false
+  sequence_diagrams: false
+  estimate_code_review_effort: false
+  related_prs: false
+  suggested_labels: false
+  suggested_reviewers: false
+  poem: false
+  in_progress_fortune: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+    # documentation-only PRs need no automatic review; release PRs only merge already reviewed feature branches
+    ignore_title_keywords:
+      - "docs:"
+      - "docs("
+      - "chore(release)"
+
+  path_filters:
+    - "!**/*.md"
+    - "!**/*.png"
+
+  path_instructions:
+    - path: "max2mqtt/**/*.go"
+      instructions: >-
+        MAX! to MQTT bridge (Home Assistant add-on) talking to eQ-3 MAX! radiator thermostats, wall thermostats and
+        shutter contacts through a CUL/CUN stick (868 MHz) or a MAX! Cube. It controls real heating valves, so a mistake can
+        leave rooms cold or a valve open.
+        Check message layouts against FHEM 10_MAX.pm / 14_CUL_MAX.pm and Bouni/max-cube-protocol, the 1 % duty cycle
+        (radio credit) and the credit reserve for direct commands, retries and acknowledgements, week profiles (never silently
+        discarded), temperature limits and rounding (0.5 °C steps), persistence across restarts, data races between goroutines,
+        and that MQTT commands from Home Assistant are validated.
+        No real RF addresses or IP addresses in code, tests or logs; use placeholders such as 0A1B2C.
+    - path: "max2mqtt/**/*_test.go"
+      instructions: >-
+        mqtt_fake_test.go is shared by all branches and should not grow; extra helpers belong in the branch's own test file.
+        Tests must not leak state (they run with go test -race -count=3).
+    - path: "max2mqtt/{Dockerfile,build.yaml,config.yaml}"
+      instructions: >-
+        The add-on builds from source on the device. The version in config.yaml and the io.hass.version label in the
+        Dockerfile must match.
+
+chat:
+  auto_reply: true
