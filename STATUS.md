@@ -2,7 +2,7 @@
 
 Handover file for the maintainer and for Claude Code sessions working on this repository. **Read this first, and update it after every step** (state, decisions, next steps), so the next session can continue without the chat history.
 
-Last updated: 2026-10-28 (1.4.3: week profile never discarded, credit reserve)
+Last updated: 2026-10-31 (CodeRabbit configuration)
 
 ## Current state
 
@@ -43,7 +43,7 @@ Last updated: 2026-10-28 (1.4.3: week profile never discarded, credit reserve)
 
 - **Remotes:** `origin` = `dktzde/max2mqtt`, `upstream` = `Dad-Ju/max2mqtt` (active upstream, itself a fork of pwurbs), `pwurbs` = `pwurbs/max2mqtt` (original).
 - **One feature = one branch from `upstream/main` = one PR**, so upstream can take each one alone. Features that need this fork's code (Cube compatibility) start from our `main` and say so. Our `main` merges them with merge commits (not squashed), through a `release-x.y.z` branch and a PR.
-- **Branches for upstream PRs:** no version bump, only `## Unreleased` in `max2mqtt/CHANGELOG.md`, no `STATUS.md`/`CLAUDE.md`. Commit style there: plain imperative sentences, like Dad-Ju's commits.
+- **Branches for upstream PRs:** no version bump, only `## Unreleased` in `max2mqtt/CHANGELOG.md`, no `STATUS.md`/`CLAUDE.md`/`.coderabbit.yaml`. Commit style there: plain imperative sentences, like Dad-Ju's commits.
 - **Tests:** `mqtt_fake_test.go` (fake MQTT client, `resetTestState`) is the same file in every branch, so merges do not conflict; extra methods go into the branch's own test file. Run `go vet ./... && go test -race -count=3 ./...` (count > 1 finds state leaking between tests).
 - **Our `main`:** sets the version in `max2mqtt/config.yaml` **and** `io.hass.version` in `max2mqtt/Dockerfile`. The add-on builds from source on the device, so whatever is on `main` with a new version reaches Home Assistant on the next update. Docs-only changes get no new version.
 - **Changelog:** every version has its date as `<sub>YYYY-MM-DD</sub>` under the heading (taken from the git history for older versions). A line `---` and a bold note separate the versions by Dad-Ju (1.2.0–1.3.2) and the original by pwurbs (1.0.0–1.1.0) from this fork (1.3.3 and later). The READMEs list the history by author in the same way.
@@ -52,6 +52,8 @@ Last updated: 2026-10-28 (1.4.3: week profile never discarded, credit reserve)
 - No private data (IP addresses, real RF addresses) in this public repository; examples use placeholders such as `0A1B2C`.
 - **Protocol references:** FHEM `10_MAX.pm` (device messages, `desiredTemperature … until`) and `14_CUL_MAX.pm` (CUL side) from [fhem/fhem-mirror](https://github.com/fhem/fhem-mirror) (`fhem/FHEM/`); Cube LAN protocol incl. byte layouts in [Bouni/max-cube-protocol](https://github.com/Bouni/max-cube-protocol). Check there before guessing a message layout.
 - Go is installed only for a session (`apk add go`), gone after an add-on restart of the Claude Code add-on.
+
+- **CodeRabbit** (AI review of PRs against our `main`): settings in `.coderabbit.yaml` (#11, 2026-10-31). Release PRs (`chore(release)`) and docs PRs are not reviewed automatically. Active once the maintainer installs the CodeRabbit GitHub app for this repository.
 
 ## Key files
 
