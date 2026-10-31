@@ -4,6 +4,8 @@
    <img src="logo.png" width="300" alt="Home Assistant Add-on MAX! to MQTT Bridge">
 </p>
 
+Coming from [dktzde/maxcube](https://github.com/dktzde/maxcube) (MAX! Cube integration)? Your Cube can stay – see "Replacing a MAX! Cube" below.
+
 ## Start here: gateway_id
 
 MAX! devices only accept commands from the gateway address they were paired with. Set `gateway_id` **before the first start**:
