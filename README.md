@@ -8,7 +8,8 @@
 
 MAX! devices only accept commands from the gateway address they were paired with. Set `gateway_id` **before the first start**:
 
-- **Replacing a MAX! Cube:** use the Cube's RF address – no re-pairing needed. Read it from the Cube (`nc <cube-ip> 62910`, first line `H:<serial>,<rf-address>,…`) or from the radio (`log_level: debug`, `dst=` of thermostat/window messages). Then switch the Cube off for good.
+- **Replacing a MAX! Cube:** use the Cube's RF address – no re-pairing needed. Read it from the Cube (`nc <cube-ip> 62910`, first line `H:<serial>,<rf-address>,…`) or from the radio (`log_level: debug`, `dst=` of thermostat/window messages). Then switch the Cube off forever – or, better, flash it with a-culfw and use it as the CUL for this add-on (see below).
+- **Your Cube can stay:** flashed with [a-culfw](https://github.com/heliflieger/a-culfw/tree/master/culfw/Devices/CUBe) (build "CUBe"), the MAX! Cube works as a network CUL – set `serial_port: tcp://<cube-ip>:2323`. I followed this guide (German): [MaxCube mit CULFW flashen](https://tinkerblog167403696.wordpress.com/maxcube-mit-culfw-flashen/). **Note the Cube's RF address before flashing** – flashing erases the Cube firmware forever.
 - **Coming from FHEM:** use the address of your `CUL_MAX` device.
 - **New installation:** any unused 6-digit hex value (e.g. `123456`), then pair all devices.
 
