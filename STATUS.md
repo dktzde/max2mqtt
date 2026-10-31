@@ -2,7 +2,7 @@
 
 Handover file for the maintainer and for Claude Code sessions working on this repository. **Read this first, and update it after every step** (state, decisions, next steps), so the next session can continue without the chat history.
 
-Last updated: 2026-10-31 (CodeRabbit configuration)
+Last updated: 2026-10-31 (first test with a real CUL: a MAX! Cube flashed with a-culfw)
 
 ## Current state
 
@@ -17,16 +17,18 @@ Last updated: 2026-10-31 (CodeRabbit configuration)
   - 1.3.6 contained a built binary `max2mqtt/max2mqtt` by mistake (removed in 1.3.7, ignored in `max2mqtt/.gitignore`). Build check: `go build -o /dev/null ./...`.
   - Not fixed on purpose (maintainer's decision 2026-10-28): TimeInformation requests (`0x03`) are answered for every device heard, also foreign ones (FHEM answers only `isToMe`).
 - **1.3.4 (2026-10-26)**: vacation mode (`vacation-mode`, `1efaa13`). **1.3.3 (2026-10-25)**: `culfw-auto-ack` (`8aa701b`), `valve-position-sensor` (`1175d15`), `shutter-contact` (`a7c593a`).
-- **On the device:** 1.4.0 installed (checked 2026-10-28; 1.3.3 since 2026-10-25 before), **never started** (add-on stopped, no log; options still defaults: `serial_port`, `gateway_id`, MQTT login). Nothing above is checked with a real CUL yet.
+- **On the device: 1.4.3 running since 2026-10-31 ~18:07** with a MAX! Cube flashed with a-culfw (`V 1.26.08 a-culfw … CUBe`) as TCP CUL (`tcp://<cube-ip>:2323`), `gateway_id` = old Cube RF address (found over the air from a window contact: its `0x30` went to the Cube address 4× without Ack). Checked 2026-10-31:
+  - Auto-Ack (`Za`): the window contact sends once instead of 4×, the CUL acks as the gateway.
+  - Set temperature on two radiator thermostats: WakeUp + `0x40`, Ack after ~2 s, verification successful; `mode/set auto` back to the week program (temperature 0) acknowledged.
+  - Config and week program import from the Cube integration (store only, nothing sent), `programme` attribute filled; new entities renamed to the old Cube entity IDs in Home Assistant (history continues).
+  - Thermostats that are only linked to each other (never paired with a Cube) are received (their `0x40` to each other and the Acks), but do not accept commands from the bridge (no Ack) – pairing needed. A thermostat linked to nothing sends nothing.
+  - Not checked yet: availability when the CUL is unplugged, sending a week profile day, vacation, boost from Home Assistant, restart keeps the mode, week profile notification and credit reserve.
 - **No pull requests to Dad-Ju or pwurbs yet.**
 
 ## Next steps
 
-1. Update the add-on in Home Assistant to 1.4.3 (accept the new Home Assistant API permission) (with backup), set `serial_port: tcp://<CUN>:2323`, MQTT user/password, `gateway_id` = Cube RF address (find it over the radio: `log_level: debug`, `dst=`), start it.
-2. Import config and week program per device from the Cube integration's last attributes (DOCS migration guide), rename the new entities to the old Cube entity IDs.
-3. Test with the real CUL: valve position vs. display, window contact, no repeated messages after Auto-Ack, setpoint confirmed by Ack, boost from HA and from the device (preset returns to none), `none` after boost, auto follows the program, duty cycle sensor, availability when the CUN is unplugged, restart keeps the mode, a week profile day (one message), week profile notification and credit reserve (e.g. many profiles at once: a setpoint change still goes out at once), vacation 1-2 hours ahead and `off`.
-4. Write the result here with date and time ("1.4.3 on the device since …, checked …").
-5. After the test and the maintainer's go-ahead: one PR per branch to `Dad-Ju/max2mqtt` (the `upstream/main` based ones first); Auto-Ack also to `pwurbs/max2mqtt` on a new branch from `pwurbs/main`.
+1. Finish the open checks above on the real device and write the result here with date and time.
+2. After the test and the maintainer's go-ahead: one PR per branch to `Dad-Ju/max2mqtt` (the `upstream/main` based ones first); Auto-Ack also to `pwurbs/max2mqtt` on a new branch from `pwurbs/main`.
 
 ## Known issues and backlog
 

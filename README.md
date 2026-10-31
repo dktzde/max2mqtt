@@ -4,11 +4,14 @@
    <img src="logo.png" width="300" alt="Home Assistant Add-on MAX! to MQTT Bridge">
 </p>
 
+Coming from [dktzde/maxcube](https://github.com/dktzde/maxcube) (MAX! Cube integration)? Your Cube can stay – see "Replacing a MAX! Cube" below.
+
 ## Start here: gateway_id
 
 MAX! devices only accept commands from the gateway address they were paired with. Set `gateway_id` **before the first start**:
 
-- **Replacing a MAX! Cube:** use the Cube's RF address – no re-pairing needed. Read it from the Cube (`nc <cube-ip> 62910`, first line `H:<serial>,<rf-address>,…`) or from the radio (`log_level: debug`, `dst=` of thermostat/window messages). Then switch the Cube off for good.
+- **Replacing a MAX! Cube:** use the Cube's RF address – no re-pairing needed. Read it from the Cube (`nc <cube-ip> 62910`, first line `H:<serial>,<rf-address>,…`) or from the radio (`log_level: debug`, `dst=` of thermostat/window messages). Then switch the Cube off forever – or, better, flash it with a-culfw and use it as the CUL for this add-on (see below).
+- **Your Cube can stay:** flashed with [a-culfw](https://github.com/heliflieger/a-culfw/tree/master/culfw/Devices/CUBe) (build "CUBe"), the MAX! Cube works as a network CUL – set `serial_port: tcp://<cube-ip>:2323`. I followed this guide (German): [MaxCube mit CULFW flashen](https://tinkerblog167403696.wordpress.com/maxcube-mit-culfw-flashen/). **Note the Cube's RF address before flashing** – flashing erases the Cube firmware forever.
 - **Coming from FHEM:** use the address of your `CUL_MAX` device.
 - **New installation:** any unused 6-digit hex value (e.g. `123456`), then pair all devices.
 
@@ -61,3 +64,7 @@ gateway_id: "0A1B2C"   # old Cube / FHEM address, see above
 ```
 
 See [Add-On ReadMe](max2mqtt/README.md) and [Documentation](max2mqtt/DOCS.md).
+
+---
+
+*Built with the help of [Claude Code in Home Assistant](https://github.com/dktzde/hass-claude-code), the add-on that makes developing right next to your own configuration a pleasure. Every feature is tested on my own MAX! Cube flashed with a-culfw, with the MAX! thermostats and window sensors I use every day, before it lands here. Within the 1 % duty cycle, of course, so Claude had to learn patience too.*
