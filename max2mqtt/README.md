@@ -56,6 +56,7 @@ Who made what, newest first. Full list with dates: [CHANGELOG](CHANGELOG.md).
 ### v1.5.0 (2026-11-01, this fork) — Credit maximum of a-culfw
 
 - **Duty cycle with a-culfw:** the bridge reads the CUL's credit maximum from its version line (culfw 900, a-culfw 3600, e.g. a MAX! Cube flashed with a-culfw) and raises it when a credit report shows more. Before, the maximum was fixed at 900, so the Duty Cycle sensor showed 0 % on a-culfw most of the time
+- The credit maximum starts again at 900 on every new CUL connection and is then set from that CUL's version line, also for standard culfw (`V 1.67 CUL868`), so a maximum of an earlier stick cannot stay
 - **Week profile reserve** follows the same maximum: with a-culfw and the defaults, week profile messages wait for 920 credits (200 + 20 % of 3600) instead of 380
 
 ### v1.4.3 (2026-10-28, this fork) — Week profile: never discarded, credit reserve

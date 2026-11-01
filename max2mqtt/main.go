@@ -269,6 +269,7 @@ func serialReaderLoop(out chan<- string, in <-chan string) {
 			continue
 		}
 
+		resetCreditMax()
 		initializeCUL(port)
 		setCULOnline(true)
 

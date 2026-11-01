@@ -2,6 +2,7 @@ package main
 
 import (
 	"log/slog"
+	"regexp"
 	"strings"
 	"sync/atomic"
 )
@@ -53,7 +54,16 @@ func learnCreditMax(credits int) {
 	setCreditMax(credits, "credit report above maximum")
 }
 
+// resetCreditMax goes back to the culfw maximum when a new CUL connection starts,
+// so a maximum from an earlier connection (another stick or firmware) cannot stay
+func resetCreditMax() {
+	setCreditMax(culfwCreditMax, "new CUL connection")
+}
+
+// versionLine matches the answer to "V": "V 1.67 CUL868" (culfw), "V 1.26.08 a-culfw Build: ..." (a-culfw)
+var versionLine = regexp.MustCompile(`^V \d+\.\d+`)
+
 // isVersionLine reports whether a CUL line is the answer to "V"
 func isVersionLine(text string) bool {
-	return strings.HasPrefix(text, "V ") && strings.Contains(strings.ToLower(text), "culfw")
+	return versionLine.MatchString(text)
 }
