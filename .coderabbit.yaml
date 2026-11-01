@@ -20,6 +20,10 @@ reviews:
   in_progress_fortune: false
   # no "review skipped" or "review in progress" status comments on PRs
   review_status: false
+  # no docstring coverage warning: this fork follows the upstream code style, which has no docstring rule
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
 
   auto_review:
     enabled: true
