@@ -293,6 +293,7 @@ MAX! devices cannot be asked for their week profile, so the bridge shows the las
 
 `<day>` is `monday` … `sunday`. Days that did not change are not sent again.
 A day with up to 7 control points takes one radio message, more take two. Messages wait for duty cycle credits if needed.
+Each message waits for the device's Ack before the next one is sent (at most 5 s, usually about 2 s) and is sent again up to 3 times without one. If a day is still not acknowledged, the bridge forgets it (unknown, so the next `programme/set` sends it again instead of skipping it as unchanged) and shows a persistent notification in Home Assistant.
 State: `max/<id>/week_profile/<day>` (FHEM syntax, shown by the text entities) and `max/<id>/programme` (whole week, MAX! Cube format).
 
 ### After a restart

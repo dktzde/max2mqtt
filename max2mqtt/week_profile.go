@@ -159,10 +159,31 @@ func encodeDaySlots(slots []ProgrammeSlot) []byte {
 func sendDaySlots(deviceID string, day int, slots []ProgrammeSlot) {
 	data := encodeDaySlots(slots)
 	name := weekDays[day]
-	sendBulkCommand(deviceID, 0x10, append([]byte{byte(day)}, data[:14]...), fmt.Sprintf("WeekProfile %s part0", name), nil)
+	unacked := func() { weekProfileDayUnacked(deviceID, day) }
+	sendBulkCommand(deviceID, 0x10, append([]byte{byte(day)}, data[:14]...), fmt.Sprintf("WeekProfile %s part0", name), unacked)
 	if len(slots) > 7 {
-		sendBulkCommand(deviceID, 0x10, append([]byte{0x10 | byte(day)}, data[14:]...), fmt.Sprintf("WeekProfile %s part1", name), nil)
+		sendBulkCommand(deviceID, 0x10, append([]byte{0x10 | byte(day)}, data[14:]...), fmt.Sprintf("WeekProfile %s part1", name), unacked)
 	}
+}
+
+// weekProfileUnackedID is the Home Assistant notification for days a device did not acknowledge
+func weekProfileUnackedID(deviceID string) string {
+	return "max2mqtt_week_profile_unacked_" + deviceID
+}
+
+// weekProfileDayUnacked forgets a day the device did not acknowledge, so the device's profile for
+// that day counts as unknown and the next programme/set sends it again instead of skipping it as
+// unchanged, and tells Home Assistant.
+func weekProfileDayUnacked(deviceID string, day int) {
+	name := weekDays[day]
+	programmeMu.Lock()
+	delete(programmes[deviceID], name)
+	programmeMu.Unlock()
+	publishProgramme(deviceID)
+	slog.Error("Week profile day not acknowledged by the device; it is now unknown, send it again", "device", deviceID, "day", name)
+	haNotify(weekProfileUnackedID(deviceID), "MAX! week profile not acknowledged",
+		fmt.Sprintf("MAX! device %s did not acknowledge the week profile for %s after %d tries. The day is now unknown to the bridge; send it again (max/%s/programme/set).",
+			deviceID, name, bulkMaxTries, deviceID))
 }
 
 // setProgramme stores the given days and, if send is set, sends the days that changed

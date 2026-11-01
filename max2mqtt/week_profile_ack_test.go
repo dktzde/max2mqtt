@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -103,4 +104,28 @@ func TestBulkWithoutCounterDoesNotWait(t *testing.T) {
 	start()
 	expectSent(t, sent, "ZsMON")
 	expectSent(t, sent, "ZsTUE")
+}
+
+func TestUnackedDayIsSentAgain(t *testing.T) {
+	rec := recordNotifications(t, time.Minute)
+	resetTestState()
+	slots := []ProgrammeSlot{{Temp: 16, Until: "07:00"}, {Temp: 14, Until: "24:00"}}
+	monday := 2
+	setProgramme(ackWaitTestDevice, map[int][]ProgrammeSlot{monday: slots}, false)
+
+	weekProfileDayUnacked(ackWaitTestDevice, monday)
+	if got := rec.list(); !strings.Contains(got, "notify:"+weekProfileUnackedID(ackWaitTestDevice)) {
+		t.Fatalf("expected a notification, got %q", got)
+	}
+
+	// Without the fix the day would be skipped as "unchanged"
+	setProgramme(ackWaitTestDevice, map[int][]ProgrammeSlot{monday: slots}, true)
+	select {
+	case cmd := <-serialWrite:
+		if !strings.HasPrefix(cmd, "Zs") {
+			t.Fatalf("unexpected TX %s", cmd)
+		}
+	default:
+		t.Fatal("the unacknowledged day was not sent again")
+	}
 }
