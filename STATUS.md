@@ -2,7 +2,7 @@
 
 Handover file for the maintainer and for Claude Code sessions working on this repository. **Read this first, and update it after every step** (state, decisions, next steps), so the next session can continue without the chat history.
 
-Last updated: 2026-11-01 (1.5.0 on the device)
+Last updated: 2026-11-01 (1.5.0 on the device, CodeRabbit auto review off)
 
 ## Current state
 
@@ -56,7 +56,7 @@ Last updated: 2026-11-01 (1.5.0 on the device)
 - **Protocol references:** FHEM `10_MAX.pm` (device messages, `desiredTemperature … until`) and `14_CUL_MAX.pm` (CUL side) from [fhem/fhem-mirror](https://github.com/fhem/fhem-mirror) (`fhem/FHEM/`); Cube LAN protocol incl. byte layouts in [Bouni/max-cube-protocol](https://github.com/Bouni/max-cube-protocol). Check there before guessing a message layout.
 - Go is installed only for a session (`apk add go`), gone after an add-on restart of the Claude Code add-on.
 
-- **CodeRabbit** (AI review of PRs against our `main`): settings in `.coderabbit.yaml` (#11, 2026-10-31). Release PRs (`chore(release)`) and docs PRs are not reviewed automatically. Active once the maintainer installs the CodeRabbit GitHub app for this repository. Docstring coverage check off (`pre_merge_checks.docstrings.mode: "off"`, 2026-11-01): the upstream code has no docstring rule. Status comments ("review skipped"/"in progress") are off: `reviews.review_status: false` (2026-11-01).
+- **CodeRabbit** (AI review of PRs against our `main`): settings in `.coderabbit.yaml` (#11, 2026-10-31). Release PRs (`chore(release)`) and docs PRs are not reviewed automatically. Active once the maintainer installs the CodeRabbit GitHub app for this repository. Docstring coverage check off (`pre_merge_checks.docstrings.mode: "off"`, 2026-11-01): the upstream code has no docstring rule. Status comments ("review skipped"/"in progress") are off: `reviews.review_status: false` (2026-11-01). Automatic reviews are off too (`reviews.auto_review.enabled: false`, 2026-11-01): CodeRabbit does not auto-review repositories with fewer than 10 stars and still posted a "does not receive automatic reviews" comment on every PR despite `review_status: false`. Reviews start with the PR comment `@coderabbitai review`.
 
 ## Key files
 
