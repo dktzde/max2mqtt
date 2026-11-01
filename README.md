@@ -37,6 +37,7 @@ Who made what, newest first. Full list with dates: [CHANGELOG](max2mqtt/CHANGELO
 
 **This fork, [dktzde/max2mqtt](https://github.com/dktzde/max2mqtt)** (since 2026-10-24):
 
+- **v1.5.2** (2026-11-01) — Week profile messages wait for the device's Ack and are resent up to 3 times
 - **v1.5.1** (2026-11-01) — Config changes and setpoints are confirmed only by the Ack for their own telegram (message counter)
 - **v1.5.0** (2026-11-01) — Credit maximum taken from the CUL (a-culfw 3600), Duty Cycle sensor and week profile reserve follow it
 - **v1.4.3** (2026-10-28) — Week profile messages are never discarded and keep a credit reserve for direct commands (`week_profile_reserve_percent`)

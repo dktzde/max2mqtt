@@ -21,6 +21,30 @@ type QueuedCommand struct {
 	// (setpoint, mode, config) go first. After bulkNotifyAfter Home Assistant
 	// shows a notification.
 	Bulk bool
+	// Cnt is the message counter of the telegram. A bulk command with Cnt > 0 waits for the
+	// device's Ack (see bulkAckTimeout) before the next telegram is sent, and is sent again
+	// up to bulkMaxTries times without one.
+	Cnt int
+	// Tries counts how often a bulk command was sent
+	Tries int
+	// OnUnacked is called when a bulk command got no Ack after bulkMaxTries tries
+	OnUnacked func()
+}
+
+// bulkAckTimeout is the longest wait for the device's Ack of a week profile telegram. A radiator
+// thermostat answers about 2 s after the CUL got the telegram (the CUL sends a 1 s wakeup
+// preamble first); a telegram sent to the device before that is lost. FHEM waits for the Ack
+// (3 s timeout) before it sends the next packet to the same device.
+var bulkAckTimeout = 5 * time.Second
+
+// bulkMaxTries is how often a week profile telegram is sent without an Ack before giving up
+var bulkMaxTries = 3
+
+// ackWait is the Ack the dispatcher waits for after a bulk telegram
+type ackWait struct {
+	deviceID string
+	cnt      int
+	acked    chan struct{}
 }
 
 // creditRetryInterval is the pause between credit queries while a command waits for credits.
@@ -31,9 +55,10 @@ var creditRetryInterval = 15 * time.Second
 // It manages the Regulatory Duty Cycle (via CUL Credits), ensuring we don't exceed
 // the 1% airtime limit. Commands are dispatched when credits are available.
 //
-// Note: We do NOT wait for ACKs. The MAX! system is self-correcting—the next RX
+// Note: normal commands do NOT wait for ACKs. The MAX! system is self-correcting—the next RX
 // packet from a device will contain its actual state, automatically fixing any
-// discrepancy if a TX was lost.
+// discrepancy if a TX was lost. Week profile telegrams are different: the device's state does
+// not show them, so each one waits for the device's Ack and is sent again without one.
 type TransmissionManager struct {
 	// Duty Cycle State
 	CurrentCredits int
@@ -49,6 +74,9 @@ type TransmissionManager struct {
 	creditResponse chan struct{} // Signal when credit response received
 	stop           chan struct{} // closed to end the dispatcher (tests); nil = run forever
 	bulkWait       *bulkWaitTracker
+
+	ackMu   sync.Mutex
+	ackWait *ackWait
 }
 
 var txMgr *TransmissionManager
@@ -122,14 +150,96 @@ func (t *TransmissionManager) Enqueue(devicedID, payload, description string) {
 }
 
 // EnqueueBulk adds a command of a long transfer (week profile), see QueuedCommand.Bulk.
+// It does not wait for an Ack; use EnqueueBulkAcked for telegrams to a device.
 func (t *TransmissionManager) EnqueueBulk(devicedID, payload, description string) {
+	t.EnqueueBulkAcked(devicedID, payload, description, 0, nil)
+}
+
+// EnqueueBulkAcked adds a bulk command whose Ack (message counter cnt) is awaited before the
+// next telegram goes out; onUnacked is called when no Ack came after bulkMaxTries tries.
+func (t *TransmissionManager) EnqueueBulkAcked(devicedID, payload, description string, cnt int, onUnacked func()) {
 	t.enqueue(QueuedCommand{
 		Payload:     payload,
 		Description: description,
 		DeviceID:    devicedID,
 		CreatedAt:   time.Now(),
 		Bulk:        true,
+		Cnt:         cnt,
+		OnUnacked:   onUnacked,
 	})
+}
+
+// AckReceived is called for every Ack a device sends to the gateway (cnt = message counter of
+// the acknowledged telegram). It ends the wait for that telegram's Ack.
+func (t *TransmissionManager) AckReceived(deviceID string, cnt int) {
+	if t == nil {
+		return
+	}
+	t.ackMu.Lock()
+	defer t.ackMu.Unlock()
+	if w := t.ackWait; w != nil && w.deviceID == deviceID && w.cnt == cnt {
+		select {
+		case w.acked <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// expectAck registers the Ack for cmd before it is sent, so an early Ack is not missed
+func (t *TransmissionManager) expectAck(cmd QueuedCommand) {
+	t.ackMu.Lock()
+	t.ackWait = &ackWait{deviceID: cmd.DeviceID, cnt: cmd.Cnt, acked: make(chan struct{}, 1)}
+	t.ackMu.Unlock()
+}
+
+func (t *TransmissionManager) clearAck() {
+	t.ackMu.Lock()
+	t.ackWait = nil
+	t.ackMu.Unlock()
+}
+
+// awaitAck waits up to bulkAckTimeout for the Ack registered with expectAck
+func (t *TransmissionManager) awaitAck() bool {
+	t.ackMu.Lock()
+	w := t.ackWait
+	t.ackMu.Unlock()
+	defer t.clearAck()
+	if w == nil {
+		return false
+	}
+	select {
+	case <-w.acked:
+		return true
+	case <-time.After(bulkAckTimeout):
+		return false
+	case <-t.stop:
+		return false
+	}
+}
+
+// finishBulk is called after a bulk command was sent. It waits for the device's Ack when the
+// command has a message counter and returns false when the command has to be sent again.
+func (t *TransmissionManager) finishBulk(cmd *QueuedCommand) bool {
+	if cmd.Cnt == 0 {
+		t.bulkWait.done(*cmd)
+		return true
+	}
+	cmd.Tries++
+	if t.awaitAck() {
+		slog.Debug("TxMgr: Week profile message acknowledged", "device", cmd.DeviceID, "desc", cmd.Description, "tries", cmd.Tries)
+		t.bulkWait.done(*cmd)
+		return true
+	}
+	if cmd.Tries < bulkMaxTries {
+		slog.Warn("TxMgr: No Ack for week profile message, sending it again", "device", cmd.DeviceID, "desc", cmd.Description, "try", cmd.Tries+1, "of", bulkMaxTries)
+		return false
+	}
+	slog.Error("TxMgr: Week profile message not acknowledged, giving up", "device", cmd.DeviceID, "desc", cmd.Description, "tries", cmd.Tries)
+	t.bulkWait.done(*cmd)
+	if cmd.OnUnacked != nil {
+		cmd.OnUnacked()
+	}
+	return true
 }
 
 func (t *TransmissionManager) enqueue(cmd QueuedCommand) {
@@ -171,7 +281,9 @@ func drainChannel(ch <-chan struct{}) {
 // dispatcherLoop consumes queued commands and dispatches them.
 // Normal commands go first; a bulk command waiting for credits lets them pass.
 // Broadcasts (deviceID=000000) skip state restoration.
-// We do NOT wait for ACKs—the next RX from the device will self-correct state if needed.
+// Normal commands do not wait for ACKs—the next RX from the device will self-correct state if
+// needed. Week profile telegrams wait for the device's Ack (finishBulk), because the device
+// misses a telegram sent while it is still answering the previous one.
 func (t *TransmissionManager) dispatcherLoop() {
 	var bulk *QueuedCommand
 	for {
@@ -194,10 +306,16 @@ func (t *TransmissionManager) dispatcherLoop() {
 				return
 			}
 		}
+		if bulk.Cnt > 0 {
+			t.expectAck(*bulk)
+		}
 		if t.tryDispatch(*bulk) {
-			bulk = nil
+			if t.finishBulk(bulk) {
+				bulk = nil
+			}
 			continue
 		}
+		t.clearAck()
 		select {
 		case cmd := <-t.queue:
 			t.processCommand(cmd)
@@ -279,9 +397,6 @@ func (t *TransmissionManager) tryDispatch(cmd QueuedCommand) bool {
 	// Brief pause after credit query so TCP/serial bridges finish the X reply before Zs
 	time.Sleep(50 * time.Millisecond)
 	t.dispatchToSerial(cmd, credits, queueLen)
-	if cmd.Bulk {
-		t.bulkWait.done(cmd)
-	}
 	return true
 }
 
