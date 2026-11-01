@@ -53,6 +53,11 @@ Who made what, newest first. Full list with dates: [CHANGELOG](CHANGELOG.md).
 - **[Dad-Ju/max2mqtt](https://github.com/Dad-Ju/max2mqtt)** (2026-10-15 to 2026-10-16): 1.2.0 to 1.3.2
 - **Original by [pwurbs/max2mqtt](https://github.com/pwurbs/max2mqtt)** (December 2025 to January 2026): 1.0.0 and 1.1.0
 
+### v1.5.2 (2026-11-01, this fork) — Week profile waits for the Ack
+
+- **Week profile waits for the device's Ack:** each week profile message waits for the device's Ack before the next one goes out (at most 5 s, usually about 2 s) and is sent again up to 3 times without one. Before, the messages went out about one second apart; the thermostat was still answering the previous one, so every second day could be lost without anyone noticing
+- A day the device did not acknowledge after 3 tries is forgotten (unknown), so the next `programme/set` sends it again instead of skipping it as unchanged, and Home Assistant shows a persistent notification
+
 ### v1.5.1 (2026-11-01, this fork) — Acks matched by message counter
 
 - **Acks are matched by message counter:** a config change (e.g. measurement offset) or a setpoint is confirmed only by the device's Ack for that telegram, addressed to the gateway (as FHEM does). Before, any Ack from the device confirmed the pending change, e.g. the Ack for the previous week profile day, the Ack for the WakeUp before a SetTemperature, or an Ack to a linked device, so a change that never reached the device was shown as confirmed. Now such a change goes back to the previous value after the 30 s Ack timeout

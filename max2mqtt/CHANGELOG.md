@@ -1,3 +1,10 @@
+## 1.5.2
+
+<sub>2026-11-01</sub>
+
+- **Week profile waits for the device's Ack:** each week profile message waits for the device's Ack before the next one goes out (at most 5 s, usually about 2 s) and is sent again up to 3 times without one. Before, the messages went out about one second apart; the thermostat was still answering the previous one, so every second day could be lost without anyone noticing
+- A day the device did not acknowledge after 3 tries is forgotten (unknown), so the next `programme/set` sends it again instead of skipping it as unchanged, and Home Assistant shows a persistent notification
+
 ## 1.5.1
 
 <sub>2026-11-01</sub>
