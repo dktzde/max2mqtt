@@ -5,8 +5,17 @@ import (
 	"testing"
 )
 
+// restoreCreditMax starts the test at the culfw maximum and restores it afterwards,
+// so a raised maximum cannot leak into later tests
+func restoreCreditMax(t *testing.T) {
+	t.Helper()
+	culCreditMax.Store(culfwCreditMax)
+	t.Cleanup(func() { culCreditMax.Store(culfwCreditMax) })
+}
+
 func TestCreditMaxFromVersion(t *testing.T) {
 	resetTestState()
+	restoreCreditMax(t)
 	processSerialLine("V 1.26.08 a-culfw Build: 323 (2019-08-03_09-32-54) CUBe (F-Band: 868MHz)", make(chan string, 1))
 	if got := creditMax(); got != aculfwCreditMax {
 		t.Fatalf("a-culfw: credit max %d, want %d", got, aculfwCreditMax)
@@ -37,6 +46,7 @@ func TestIsVersionLine(t *testing.T) {
 
 func TestCreditMaxResetOnNewConnection(t *testing.T) {
 	resetTestState()
+	restoreCreditMax(t)
 	detectCreditMax("V 1.26.08 a-culfw Build: 323 CUBe")
 	resetCreditMax()
 	if got := creditMax(); got != culfwCreditMax {
@@ -46,6 +56,7 @@ func TestCreditMaxResetOnNewConnection(t *testing.T) {
 
 func TestDutyCycleWithACulfw(t *testing.T) {
 	fc := resetTestState()
+	restoreCreditMax(t)
 	creditStateMu.Lock()
 	lastCreditState = nil
 	creditStateMu.Unlock()
@@ -59,6 +70,7 @@ func TestDutyCycleWithACulfw(t *testing.T) {
 
 func TestCreditMaxLearnedFromReport(t *testing.T) {
 	resetTestState()
+	restoreCreditMax(t)
 	initTransmissionManager()
 	processSerialLine("00 1200", make(chan string, 1))
 	if got := creditMax(); got != aculfwCreditMax {
@@ -76,6 +88,7 @@ func TestCreditMaxLearnedFromReport(t *testing.T) {
 
 func TestBulkReserveWithACulfw(t *testing.T) {
 	resetTestState()
+	restoreCreditMax(t)
 	detectCreditMax("V 1.26.08 a-culfw Build: 323 CUBe")
 	mgr := &TransmissionManager{MinCredits: 200, ReservePercent: 20}
 	if got := mgr.minCredits(QueuedCommand{Bulk: true}); got != 920 {

@@ -63,7 +63,6 @@ func resetTestState() *fakeMQTT {
 	programmes = map[string]Programme{}
 	programmeMu.Unlock()
 	txMgr = nil
-	culCreditMax.Store(culfwCreditMax)
 	verificationMgr = nil
 	ackTracker = nil
 	return fc
