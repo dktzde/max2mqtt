@@ -269,6 +269,7 @@ func serialReaderLoop(out chan<- string, in <-chan string) {
 			continue
 		}
 
+		resetCreditMax()
 		initializeCUL(port)
 		setCULOnline(true)
 
@@ -349,11 +350,16 @@ func processSerialLine(text string, out chan<- string) {
 		return
 	}
 
+	if isVersionLine(text) {
+		detectCreditMax(text)
+	}
+
 	// Check for Credit Report: "yy xxx" (e.g., "00 900")
 	if txMgr != nil {
 		queueLen, credits, matched := ParseCreditResponse(text)
 		if matched {
 			slog.Debug("CUL credit report", "credits", credits, "cul_queue", queueLen, "raw", text)
+			learnCreditMax(credits)
 			txMgr.UpdateCredits(credits, queueLen)
 			publishCredits(credits, queueLen)
 			txMgr.SignalCreditResponse()

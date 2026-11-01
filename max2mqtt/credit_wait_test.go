@@ -123,9 +123,9 @@ func TestCommandDroppedAfterTimeout(t *testing.T) {
 
 func TestBulkKeepsCreditReserve(t *testing.T) {
 	credits, sent, start := startTxTest(t, time.Minute)
-	txMgr.BulkMinCredits = bulkMinCredits(200, 20)
-	if txMgr.BulkMinCredits != 380 {
-		t.Fatalf("bulk min credits %d, want 380", txMgr.BulkMinCredits)
+	txMgr.ReservePercent = 20
+	if got := txMgr.minCredits(QueuedCommand{Bulk: true}); got != 380 {
+		t.Fatalf("bulk min credits %d, want 380", got)
 	}
 	credits.Store(300)
 	start()

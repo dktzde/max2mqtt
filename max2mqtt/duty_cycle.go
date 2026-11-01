@@ -8,7 +8,7 @@ import (
 )
 
 // Duty cycle sensors on the bridge device, from the CUL credit report ("X"):
-// - TX Credits: remaining credits (10 ms of airtime each, culfw refills 1 per second up to 900)
+// - TX Credits: remaining credits (10 ms of airtime each, the CUL refills 1 per second up to creditMax(): 900 with culfw, 3600 with a-culfw)
 // - Duty Cycle: used part of the CUL's credit budget in %, like the MAX! Cube's duty cycle value
 const (
 	creditsStateTopic = "max/bridge/credits"
@@ -28,13 +28,14 @@ var (
 
 // dutyCycleFromCredits returns the used part of the credit budget in percent
 func dutyCycleFromCredits(credits int) int {
-	if credits >= culCreditMax {
+	limit := creditMax()
+	if credits >= limit {
 		return 0
 	}
 	if credits <= 0 {
 		return 100
 	}
-	return (culCreditMax - credits) * 100 / culCreditMax
+	return (limit - credits) * 100 / limit
 }
 
 // publishCredits publishes the credit report when it changed

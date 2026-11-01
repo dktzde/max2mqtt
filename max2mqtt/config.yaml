@@ -1,5 +1,5 @@
 name: "MAX! to MQTT Bridge"
-version: "1.4.3"
+version: "1.5.0"
 slug: "max2mqtt"
 description: "Bridge for MAX! Thermostats via CUL (USB serial or tcp://host:port) to MQTT in Home Assistant"
 url: https://github.com/dktzde/max2mqtt
