@@ -1,3 +1,10 @@
+## 1.5.0
+
+<sub>2026-11-01</sub>
+
+- **Duty cycle with a-culfw:** the bridge reads the CUL's credit maximum from its version line (culfw 900, a-culfw 3600, e.g. a MAX! Cube flashed with a-culfw) and raises it when a credit report shows more. Before, the maximum was fixed at 900, so the Duty Cycle sensor showed 0 % on a-culfw most of the time
+- **Week profile reserve** follows the same maximum: with a-culfw and the defaults, week profile messages wait for 920 credits (200 + 20 % of 3600) instead of 380
+
 ## 1.4.3
 
 <sub>2026-10-28</sub>

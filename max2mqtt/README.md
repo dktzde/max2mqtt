@@ -53,6 +53,11 @@ Who made what, newest first. Full list with dates: [CHANGELOG](CHANGELOG.md).
 - **[Dad-Ju/max2mqtt](https://github.com/Dad-Ju/max2mqtt)** (2026-10-15 to 2026-10-16): 1.2.0 to 1.3.2
 - **Original by [pwurbs/max2mqtt](https://github.com/pwurbs/max2mqtt)** (December 2025 to January 2026): 1.0.0 and 1.1.0
 
+### v1.5.0 (2026-11-01, this fork) — Credit maximum of a-culfw
+
+- **Duty cycle with a-culfw:** the bridge reads the CUL's credit maximum from its version line (culfw 900, a-culfw 3600, e.g. a MAX! Cube flashed with a-culfw) and raises it when a credit report shows more. Before, the maximum was fixed at 900, so the Duty Cycle sensor showed 0 % on a-culfw most of the time
+- **Week profile reserve** follows the same maximum: with a-culfw and the defaults, week profile messages wait for 920 credits (200 + 20 % of 3600) instead of 380
+
 ### v1.4.3 (2026-10-28, this fork) — Week profile: never discarded, credit reserve
 
 - **Week profile messages are never discarded** for lack of duty cycle credits (before: after 120 minutes); the "discarded" notification is gone, the notification after 60 minutes stays
