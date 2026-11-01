@@ -1,3 +1,8 @@
+## Unreleased
+
+- Confirm a config change or a setpoint only with the Ack for that telegram: Acks are matched by message counter and must be addressed to the gateway (as FHEM does). Before, any Ack from the device confirmed the pending change, e.g. the Ack for the previous week profile day, the Ack for the WakeUp before a SetTemperature, or an Ack to a linked device, so a change that never reached the device was shown as confirmed
+- Sending a week profile no longer confirms a pending config change of the device
+
 ## 1.3.2
 
 - Apply expected setpoint on short device Ack (FHEM AckSetTemperature) — verification no longer requires a full status payload

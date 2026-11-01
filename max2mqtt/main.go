@@ -458,20 +458,21 @@ func handleSerialMessage(raw string) {
 	// 3. SetTemperature (0x40): Manual change on Wall Thermostat
 	touchLastSeen(pkt.SrcAddr)
 
-	// Any Ack (including short) confirms pending config / setpoint TX via CUL push — no polling
+	// An Ack to the gateway confirms the pending config / setpoint TX it answers (matched by the
+	// message counter) via CUL push — no polling. Acks between devices confirm nothing.
 	if pkt.Type == 0x02 {
-		if ackTracker != nil {
-			ackTracker.Confirm(pkt.SrcAddr)
+		if ackTracker != nil && pkt.DstAddr == strings.ToUpper(hex.EncodeToString(getGatewayAddress())) {
+			ackTracker.Confirm(pkt.SrcAddr, pkt.MsgCount)
 			// Short Acks have no temp payload; still apply expected setpoint (FHEM AckSetTemperature)
 			if len(pkt.Payload) < 4 {
-				if ackTracker.ApplySetpointAck(pkt.SrcAddr) {
+				if ackTracker.ApplySetpointAck(pkt.SrcAddr, pkt.MsgCount) {
 					slog.Info("Short Ack applied pending setpoint", "src", pkt.SrcAddr)
 					return
 				}
 				slog.Debug("Short Ack (no pending setpoint)", "src", pkt.SrcAddr, "dst", pkt.DstAddr, "payload_len", len(pkt.Payload))
 				return
 			}
-			ackTracker.ApplySetpointAck(pkt.SrcAddr)
+			ackTracker.ApplySetpointAck(pkt.SrcAddr, pkt.MsgCount)
 		}
 	}
 
@@ -1027,6 +1028,10 @@ func sendCommand(dstAddr string, typeByte byte, payload []byte, description stri
 		"payload", fmt.Sprintf("%X", payload),
 		"cul_cmd", cmd,
 	)
+
+	if dstAddr != "000000" {
+		ackTracker.BindCounter(dstAddr, typeByte, cnt)
+	}
 
 	if txMgr != nil {
 		descWithCnt := fmt.Sprintf("%s (Cnt:%d grp:%d)", description, cnt, groupID)
