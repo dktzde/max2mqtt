@@ -1,3 +1,9 @@
+## 1.5.1
+
+<sub>2026-11-01</sub>
+
+- **Acks are matched by message counter:** a config change (e.g. measurement offset) or a setpoint is confirmed only by the device's Ack for that telegram, addressed to the gateway (as FHEM does). Before, any Ack from the device confirmed the pending change, e.g. the Ack for the previous week profile day, the Ack for the WakeUp before a SetTemperature, or an Ack to a linked device, so a change that never reached the device was shown as confirmed. Now such a change goes back to the previous value after the 30 s Ack timeout
+
 ## 1.5.0
 
 <sub>2026-11-01</sub>
