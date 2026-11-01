@@ -16,6 +16,9 @@ type PendingConfigAck struct {
 	Previous DeviceConfigSnapshot
 	Next     DeviceConfigSnapshot
 	Timer    *time.Timer
+	// Counters holds the message counters of the telegrams sent for this change (see BindCounter).
+	// Only an Ack carrying one of them confirms the change.
+	Counters map[int]bool
 }
 
 // DeviceConfigSnapshot is a copy of config used for optimistic update / rollback.
@@ -33,6 +36,9 @@ type PendingSetpoint struct {
 	Mode        string
 	HVACMode    string
 	Until       string // vacation end "YYYY-MM-DD HH:MM", empty for other modes
+	// Counters holds the message counters of the SetTemperature telegrams sent for this setpoint
+	// (first try and retries). Only an Ack carrying one of them applies the setpoint.
+	Counters map[int]bool
 }
 
 type AckTracker struct {
@@ -90,9 +96,44 @@ func (a *AckTracker) TrackVacation(deviceID string, temp float64, until string) 
 	slog.Debug("Tracking pending vacation", "device", deviceID, "temp", temp, "until", until)
 }
 
-// ApplySetpointAck applies pending setpoint on any 0x02 Ack from the device (FHEM AckSetTemperature).
+// configMsgTypeMatches reports whether a sent message type belongs to a pending config change
+// of the tracked type. Removing the group ID (0x23) is tracked as a group ID change (0x22).
+func configMsgTypeMatches(tracked, sent byte) bool {
+	return tracked == sent || (tracked == 0x22 && sent == 0x23)
+}
+
+// BindCounter records the message counter of a telegram sent to a device, so the Ack for exactly
+// this telegram can be recognised later. A device answers every telegram with an Ack that carries
+// the counter of that telegram; Acks for other telegrams (for example the previous week profile
+// day, or the WakeUp sent before a SetTemperature) must not confirm a pending change (FHEM
+// 14_CUL_MAX.pm matches src, dst and counter in the same way).
+func (a *AckTracker) BindCounter(deviceID string, msgType byte, cnt int) {
+	if a == nil {
+		return
+	}
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	if msgType == 0x40 {
+		if p, ok := a.pendingSetTemp[deviceID]; ok {
+			if p.Counters == nil {
+				p.Counters = map[int]bool{}
+			}
+			p.Counters[cnt] = true
+		}
+		return
+	}
+	if entry, ok := a.pending[deviceID]; ok && configMsgTypeMatches(entry.MsgType, msgType) {
+		if entry.Counters == nil {
+			entry.Counters = map[int]bool{}
+		}
+		entry.Counters[cnt] = true
+	}
+}
+
+// ApplySetpointAck applies the pending setpoint when the device Acks the SetTemperature telegram
+// (FHEM AckSetTemperature). cnt is the message counter of the Ack.
 // Returns true if a pending setpoint was applied.
-func (a *AckTracker) ApplySetpointAck(deviceID string) bool {
+func (a *AckTracker) ApplySetpointAck(deviceID string, cnt int) bool {
 	if a == nil {
 		return false
 	}
@@ -100,6 +141,11 @@ func (a *AckTracker) ApplySetpointAck(deviceID string) bool {
 	pending, ok := a.pendingSetTemp[deviceID]
 	if !ok {
 		a.mutex.Unlock()
+		return false
+	}
+	if !pending.Counters[cnt] {
+		a.mutex.Unlock()
+		slog.Debug("Ack is not for the pending SetTemperature", "device", deviceID, "cnt", cnt)
 		return false
 	}
 	delete(a.pendingSetTemp, deviceID)
@@ -171,8 +217,10 @@ func (a *AckTracker) TrackConfig(deviceID string, msgType byte, field string, pr
 	slog.Info("Config change pending Ack", "device", deviceID, "field", field, "type", msgType)
 }
 
-// Confirm marks a successful device Ack/status push and cancels the timeout.
-func (a *AckTracker) Confirm(deviceID string) {
+// Confirm marks a pending config change as acknowledged and cancels the timeout, but only when
+// the Ack carries the message counter of a telegram sent for that change. cnt is the message
+// counter of the Ack.
+func (a *AckTracker) Confirm(deviceID string, cnt int) {
 	if a == nil {
 		return
 	}
@@ -181,6 +229,11 @@ func (a *AckTracker) Confirm(deviceID string) {
 	if !ok {
 		a.mutex.Unlock()
 		slog.Debug("Ack Confirm: no pending config for device", "device", deviceID)
+		return
+	}
+	if !entry.Counters[cnt] {
+		a.mutex.Unlock()
+		slog.Debug("Ack Confirm: Ack is for another message", "device", deviceID, "cnt", cnt, "field", entry.Field)
 		return
 	}
 	if entry.Timer != nil {
