@@ -53,6 +53,10 @@ Who made what, newest first. Full list with dates: [CHANGELOG](CHANGELOG.md).
 - **[Dad-Ju/max2mqtt](https://github.com/Dad-Ju/max2mqtt)** (2026-10-15 to 2026-10-16): 1.2.0 to 1.3.2
 - **Original by [pwurbs/max2mqtt](https://github.com/pwurbs/max2mqtt)** (December 2025 to January 2026): 1.0.0 and 1.1.0
 
+### v1.5.1 (2026-11-01, this fork) — Acks matched by message counter
+
+- **Acks are matched by message counter:** a config change (e.g. measurement offset) or a setpoint is confirmed only by the device's Ack for that telegram, addressed to the gateway (as FHEM does). Before, any Ack from the device confirmed the pending change, e.g. the Ack for the previous week profile day, the Ack for the WakeUp before a SetTemperature, or an Ack to a linked device, so a change that never reached the device was shown as confirmed. Now such a change goes back to the previous value after the 30 s Ack timeout
+
 ### v1.5.0 (2026-11-01, this fork) — Credit maximum of a-culfw
 
 - **Duty cycle with a-culfw:** the bridge reads the CUL's credit maximum from its version line (culfw 900, a-culfw 3600, e.g. a MAX! Cube flashed with a-culfw) and raises it when a credit report shows more. Before, the maximum was fixed at 900, so the Duty Cycle sensor showed 0 % on a-culfw most of the time

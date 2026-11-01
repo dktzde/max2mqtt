@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -22,8 +23,12 @@ func TestAutoFollowsWeekProgram(t *testing.T) {
 		t.Fatalf("auto must be sent with temperature 0 (week program): %v", tx)
 	}
 
-	// Short Ack: mode auto applied, setpoint not set to 0
-	ackTracker.ApplySetpointAck(dev)
+	// Short Ack for the SetTemperature telegram (same counter): mode auto applied, setpoint not set to 0
+	cnt, err := strconv.ParseUint(tx[0][4:6], 16, 8) // "Zs" + length byte, then the counter
+	if err != nil {
+		t.Fatal(err)
+	}
+	ackTracker.ApplySetpointAck(dev, int(cnt))
 	if d := stateCache[dev]; d.Mode != "auto" || d.Temperature != 21 {
 		t.Fatalf("after Ack: mode %s temp %.1f", d.Mode, d.Temperature)
 	}
