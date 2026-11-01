@@ -79,10 +79,8 @@ func sendWeekProfile(deviceID string, profile WeekProfileMQTT) {
 		sendCommand(deviceID, 0x10, p2, fmt.Sprintf("WeekProfile %s part1", dayName))
 		time.Sleep(800 * time.Millisecond)
 	}
-	// Confirm after TX burst (CUL will deliver Acks asynchronously; also publish retained)
-	if ackTracker != nil {
-		ackTracker.Confirm(deviceID)
-	}
+	// Week profile telegrams are not tracked by the AckTracker: confirming here would confirm an
+	// unrelated pending config change of this device. Publish the profile retained.
 	topic := fmt.Sprintf("max/%s/week_profile", deviceID)
 	if mqttClient != nil {
 		mqttClient.Publish(topic, 0, true, mustJSON(profile))
