@@ -87,8 +87,9 @@ A command that finds too few credits (`duty_cycle_min_credits`) or a busy CUL qu
 the bridge queries the credits again every 15 s and sends it as soon as there are enough.
 Only after `command_timeout` (default `1m`) the command is dropped and the old state is restored in Home Assistant.
 The CUL refills about one credit per second; a message with wakeup preamble costs about 100.
+The **Duty Cycle** sensor shows the used part of the CUL's credit maximum in % (0 % = full budget).
 
-Week profile messages are a bulk transfer: they are never discarded for lack of credits, and setpoint, mode or config commands sent in the meantime go first. They are only sent while the credits are above `duty_cycle_min_credits` plus `week_profile_reserve_percent` (default 20 %) of the CUL's maximum of 900 credits (200 + 180 = 380 with the defaults), so a direct change can still be sent at once.
+Week profile messages are a bulk transfer: they are never discarded for lack of credits, and setpoint, mode or config commands sent in the meantime go first. They are only sent while the credits are above `duty_cycle_min_credits` plus `week_profile_reserve_percent` (default 20 %) of the CUL's credit maximum, so a direct change can still be sent at once. The maximum depends on the firmware: culfw saves up 900 credits (200 + 180 = 380 with the defaults), a-culfw 3600 (200 + 720 = 920). The bridge reads it from the CUL's version line and raises it when a credit report shows more.
 If a week profile message still waits after 60 minutes, the add-on shows a persistent notification in Home Assistant (it keeps waiting); the notification is removed when the profile was sent. This uses the Home Assistant API of the Supervisor (`homeassistant_api`); a bridge running outside Home Assistant only logs it.
 
 ## TX Flow Diagram
