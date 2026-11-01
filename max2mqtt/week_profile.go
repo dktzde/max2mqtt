@@ -159,9 +159,9 @@ func encodeDaySlots(slots []ProgrammeSlot) []byte {
 func sendDaySlots(deviceID string, day int, slots []ProgrammeSlot) {
 	data := encodeDaySlots(slots)
 	name := weekDays[day]
-	sendBulkCommand(deviceID, 0x10, append([]byte{byte(day)}, data[:14]...), fmt.Sprintf("WeekProfile %s part0", name))
+	sendBulkCommand(deviceID, 0x10, append([]byte{byte(day)}, data[:14]...), fmt.Sprintf("WeekProfile %s part0", name), nil)
 	if len(slots) > 7 {
-		sendBulkCommand(deviceID, 0x10, append([]byte{0x10 | byte(day)}, data[14:]...), fmt.Sprintf("WeekProfile %s part1", name))
+		sendBulkCommand(deviceID, 0x10, append([]byte{0x10 | byte(day)}, data[14:]...), fmt.Sprintf("WeekProfile %s part1", name), nil)
 	}
 }
 

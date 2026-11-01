@@ -503,6 +503,11 @@ func handleSerialMessage(raw string) {
 		return
 	}
 
+	// The TX manager waits for this Ack before it sends the next week profile telegram
+	if pkt.Type == 0x02 && txMgr != nil && pkt.DstAddr == gatewayAddrHex() {
+		txMgr.AckReceived(pkt.SrcAddr, pkt.MsgCount)
+	}
+
 	// An Ack to the gateway confirms the pending config / setpoint TX it answers (matched by the
 	// message counter) via CUL push — no polling. Acks between devices confirm nothing.
 	if pkt.Type == 0x02 {
@@ -1188,16 +1193,17 @@ func gatewayAddrHex() string {
 
 // sendCommand constructs and sends a MAX! message via CUL
 func sendCommand(dstAddr string, typeByte byte, payload []byte, description string) {
-	queueCommand(dstAddr, typeByte, payload, description, false)
+	queueCommand(dstAddr, typeByte, payload, description, false, nil)
 }
 
 // sendBulkCommand sends one message of a long transfer (week profile): it may wait longer
-// for duty cycle credits and lets normal commands go first
-func sendBulkCommand(dstAddr string, typeByte byte, payload []byte, description string) {
-	queueCommand(dstAddr, typeByte, payload, description, true)
+// for duty cycle credits, lets normal commands go first and waits for the device's Ack before the
+// next telegram; onUnacked is called when the device did not acknowledge it after all tries
+func sendBulkCommand(dstAddr string, typeByte byte, payload []byte, description string, onUnacked func()) {
+	queueCommand(dstAddr, typeByte, payload, description, true, onUnacked)
 }
 
-func queueCommand(dstAddr string, typeByte byte, payload []byte, description string, bulk bool) {
+func queueCommand(dstAddr string, typeByte byte, payload []byte, description string, bulk bool, onUnacked func()) {
 	dstAddr = strings.ToUpper(dstAddr)
 	cnt := nextMsgCounter()
 	srcBytes := getGatewayAddress()
@@ -1254,7 +1260,7 @@ func queueCommand(dstAddr string, typeByte byte, payload []byte, description str
 	if txMgr != nil {
 		descWithCnt := fmt.Sprintf("%s (Cnt:%d grp:%d)", description, cnt, groupID)
 		if bulk {
-			txMgr.EnqueueBulk(dstAddr, cmd, descWithCnt)
+			txMgr.EnqueueBulkAcked(dstAddr, cmd, descWithCnt, cnt, onUnacked)
 		} else {
 			txMgr.Enqueue(dstAddr, cmd, descWithCnt)
 		}
