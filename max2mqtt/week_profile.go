@@ -154,16 +154,99 @@ func encodeDaySlots(slots []ProgrammeSlot) []byte {
 	return out
 }
 
-// sendDaySlots sends one day: control points 1-7 in part 0, points 8-13 in part 1 only when
-// the day has more than 7 (as FHEM does), which saves airtime and duty cycle
+// Day groups: one ConfigWeekProfile telegram for several days.
+//
+// Day numbers 0-6 are Saturday to Friday (FHEM 10_MAX.pm, Cube protocol). A MAX! radiator
+// thermostat also uses 7 and 8: when its week program is edited on the device itself, it sends the
+// program to its linked partners as one telegram per day group, not per day. Found by listening
+// with a CUL on 2026-11-02 (Wohnzimmer thermostats of the maintainer, linked to each other only, no
+// Cube): the maintainer changed Monday-Friday on the display of one thermostat; it sent a WakeUp
+// (0xF1) and then two 0x10 telegrams to each partner: day 8 with exactly the Monday-Friday points
+// set on the display (15 °C until 05:40, 19 °C until 19:00, 13 °C until 24:00) and day 7 with the
+// Saturday/Sunday points. The partners acknowledged both and at once followed the new Monday-Friday
+// setpoint. Sending the same program again by hand gave the same telegrams. Neither FHEM nor the
+// Cube protocol documents these numbers.
+// Day 9 is Monday-Sunday: choosing Mo-So on the display (it shows the former Saturday/Sunday points
+// to start from) and saving sent one 0x10 telegram with day 9 to each partner (2026-11-02 08:52,
+// 15 °C until 05:30, 19.5 °C until 19:00, 14 °C until 24:00), acknowledged by both.
+// Sending a group instead of its days saves telegrams and duty cycle: a whole week with the same
+// program on workdays and on the weekend takes 2 telegrams instead of 7, the same program every
+// day only 1. A device that does not acknowledge a group telegram gets single days from then on
+// (until the add-on restarts).
+type dayGroup struct {
+	index int    // day number in ConfigWeekProfile
+	name  string // for logs and notifications
+	days  []int  // MAX! day numbers it stands for
+}
+
+// Checked in this order: a week with the same points every day takes one telegram (day 9)
+var dayGroups = []dayGroup{
+	{9, "monday-sunday", []int{0, 1, 2, 3, 4, 5, 6}},
+	{8, "monday-friday", []int{2, 3, 4, 5, 6}},
+	{7, "saturday-sunday", []int{0, 1}},
+}
+
+var (
+	noDayGroupsMu sync.Mutex
+	noDayGroups   = map[string]bool{} // devices that did not acknowledge a group telegram
+)
+
+func dayGroupsAllowed(deviceID string) bool {
+	noDayGroupsMu.Lock()
+	defer noDayGroupsMu.Unlock()
+	return !noDayGroups[deviceID]
+}
+
+// sendDaySlots sends one day
 func sendDaySlots(deviceID string, day int, slots []ProgrammeSlot) {
+	sendProfileTelegrams(deviceID, day, weekDays[day], []int{day}, slots)
+}
+
+// sendProfileTelegrams sends the points of one day or day group: control points 1-7 in part 0,
+// points 8-13 in part 1 only when there are more than 7 (as FHEM does), which saves airtime and
+// duty cycle
+func sendProfileTelegrams(deviceID string, index int, name string, days []int, slots []ProgrammeSlot) {
 	data := encodeDaySlots(slots)
-	name := weekDays[day]
-	unacked := func() { weekProfileDayUnacked(deviceID, day) }
-	sendBulkCommand(deviceID, 0x10, append([]byte{byte(day)}, data[:14]...), fmt.Sprintf("WeekProfile %s part0", name), unacked)
+	unacked := func() { weekProfileDaysUnacked(deviceID, name, days, index >= len(weekDays)) }
+	sendBulkCommand(deviceID, 0x10, append([]byte{byte(index)}, data[:14]...), fmt.Sprintf("WeekProfile %s part0", name), unacked)
 	if len(slots) > 7 {
-		sendBulkCommand(deviceID, 0x10, append([]byte{0x10 | byte(day)}, data[14:]...), fmt.Sprintf("WeekProfile %s part1", name), unacked)
+		sendBulkCommand(deviceID, 0x10, append([]byte{0x10 | byte(index)}, data[14:]...), fmt.Sprintf("WeekProfile %s part1", name), unacked)
 	}
+}
+
+// groupDays replaces the days of a day group by one group telegram when all of them are to be sent
+// with the same points; it returns the groups to send and the days left over
+func groupDays(deviceID string, toSend []int, days map[int][]ProgrammeSlot) ([]dayGroup, []int) {
+	if !dayGroupsAllowed(deviceID) {
+		return nil, toSend
+	}
+	pending := map[int]bool{}
+	for _, d := range toSend {
+		pending[d] = true
+	}
+	var groups []dayGroup
+	for _, g := range dayGroups {
+		same := true
+		for _, d := range g.days {
+			if !pending[d] || !slotsEqual(days[d], days[g.days[0]]) {
+				same = false
+				break
+			}
+		}
+		if same {
+			groups = append(groups, g)
+			for _, d := range g.days {
+				delete(pending, d)
+			}
+		}
+	}
+	var rest []int
+	for _, d := range toSend {
+		if pending[d] {
+			rest = append(rest, d)
+		}
+	}
+	return groups, rest
 }
 
 // weekProfileUnackedID is the Home Assistant notification for days a device did not acknowledge
@@ -175,14 +258,26 @@ func weekProfileUnackedID(deviceID string) string {
 // that day counts as unknown and the next programme/set sends it again instead of skipping it as
 // unchanged, and tells Home Assistant.
 func weekProfileDayUnacked(deviceID string, day int) {
-	name := weekDays[day]
+	weekProfileDaysUnacked(deviceID, weekDays[day], []int{day}, false)
+}
+
+// weekProfileDaysUnacked does the same for the days of one telegram (a day or a day group). After
+// an unacknowledged group telegram the device gets single days from then on.
+func weekProfileDaysUnacked(deviceID, name string, days []int, group bool) {
 	programmeMu.Lock()
-	delete(programmes[deviceID], name)
+	for _, d := range days {
+		delete(programmes[deviceID], weekDays[d])
+	}
 	programmeMu.Unlock()
+	if group {
+		noDayGroupsMu.Lock()
+		noDayGroups[deviceID] = true
+		noDayGroupsMu.Unlock()
+	}
 	publishProgramme(deviceID)
-	slog.Error("Week profile day not acknowledged by the device; it is now unknown, send it again", "device", deviceID, "day", name)
+	slog.Error("Week profile not acknowledged by the device; the days are now unknown, send them again", "device", deviceID, "days", name, "day_group", group)
 	haNotify(weekProfileUnackedID(deviceID), "MAX! week profile not acknowledged",
-		fmt.Sprintf("MAX! device %s did not acknowledge the week profile for %s after %d tries. The day is now unknown to the bridge; send it again (max/%s/programme/set).",
+		fmt.Sprintf("MAX! device %s did not acknowledge the week profile for %s after %d tries. These days are now unknown to the bridge; send them again (max/%s/programme/set).",
 			deviceID, name, bulkMaxTries, deviceID))
 }
 
@@ -212,7 +307,11 @@ func setProgramme(deviceID string, days map[int][]ProgrammeSlot, send bool) {
 	}
 	programmeMu.Unlock()
 
-	for _, day := range toSend {
+	groups, single := groupDays(deviceID, toSend, days)
+	for _, g := range groups {
+		sendProfileTelegrams(deviceID, g.index, g.name, g.days, days[g.days[0]])
+	}
+	for _, day := range single {
 		sendDaySlots(deviceID, day, days[day])
 	}
 	if !send {
