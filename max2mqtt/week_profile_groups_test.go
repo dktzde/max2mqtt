@@ -98,3 +98,24 @@ func TestUnackedDayGroupFallsBackToSingleDays(t *testing.T) {
 		t.Fatalf("day bytes %s, want single days 00,01", got)
 	}
 }
+
+func TestSameProgramEveryDayGoesOutAsOneTelegram(t *testing.T) {
+	resetTestState()
+	resetDayGroups(t)
+	const dev = "0A1B2C"
+	// The telegram a thermostat sent to its linked partners on 2026-11-02 after Mo-So was saved on
+	// the device: day 9 = Monday-Sunday
+	day := `[{"temp":15,"until":"05:30"},{"temp":19.5,"until":"19:00"},{"temp":14,"until":"24:00"}]`
+	week := "{"
+	for i, d := range weekDays {
+		if i > 0 {
+			week += ","
+		}
+		week += `"` + d + `":` + day
+	}
+	handleMQTTProgrammeSet(nil, fakeMessage{topic: "max/" + dev + "/programme/set", payload: week + "}"})
+	tx := queuedTX()
+	if len(tx) != 1 || payloadOf(tx[0]) != "093C424EE439204520452045204520" {
+		t.Fatalf("want one Monday-Sunday telegram, got %v", tx)
+	}
+}

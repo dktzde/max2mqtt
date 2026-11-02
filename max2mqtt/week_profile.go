@@ -166,16 +166,22 @@ func encodeDaySlots(slots []ProgrammeSlot) []byte {
 // Saturday/Sunday points. The partners acknowledged both and at once followed the new Monday-Friday
 // setpoint. Sending the same program again by hand gave the same telegrams. Neither FHEM nor the
 // Cube protocol documents these numbers.
+// Day 9 is Monday-Sunday: choosing Mo-So on the display (it shows the former Saturday/Sunday points
+// to start from) and saving sent one 0x10 telegram with day 9 to each partner (2026-11-02 08:52,
+// 15 °C until 05:30, 19.5 °C until 19:00, 14 °C until 24:00), acknowledged by both.
 // Sending a group instead of its days saves telegrams and duty cycle: a whole week with the same
-// program on workdays and on the weekend takes 2 telegrams instead of 7. A device that does not
-// acknowledge a group telegram gets single days from then on (until the add-on restarts).
+// program on workdays and on the weekend takes 2 telegrams instead of 7, the same program every
+// day only 1. A device that does not acknowledge a group telegram gets single days from then on
+// (until the add-on restarts).
 type dayGroup struct {
 	index int    // day number in ConfigWeekProfile
 	name  string // for logs and notifications
 	days  []int  // MAX! day numbers it stands for
 }
 
+// Checked in this order: a week with the same points every day takes one telegram (day 9)
 var dayGroups = []dayGroup{
+	{9, "monday-sunday", []int{0, 1, 2, 3, 4, 5, 6}},
 	{8, "monday-friday", []int{2, 3, 4, 5, 6}},
 	{7, "saturday-sunday", []int{0, 1}},
 }
