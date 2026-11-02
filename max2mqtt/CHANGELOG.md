@@ -1,3 +1,10 @@
+## 1.6.1
+
+<sub>2026-11-02</sub>
+
+- **Week profile day group Monday to Sunday:** the same control points on all seven days go out as one message (day number 9) instead of two. Found the same way as 1.6.0: a radiator thermostat sent its program as one day-9 message to its linked thermostats after Mo-So was edited on the device
+- Not tested on a device yet: sending a group from the bridge to a paired thermostat
+
 ## 1.6.0
 
 <sub>2026-11-02</sub>
