@@ -1,3 +1,10 @@
+## 1.6.0
+
+<sub>2026-11-02</sub>
+
+- **Week profile day groups:** Monday to Friday with the same control points go out as one week profile message (day number 8), Saturday and Sunday as one (day number 7), so a whole week takes 2 messages instead of 7 and costs much less duty cycle. Radiator thermostats use these numbers themselves when their program is edited on the device and they pass it on to linked thermostats (found by listening with a CUL on 2026-11-02). A device that does not acknowledge a group message gets single days again
+- Not tested on a device yet: sending a group from the bridge to a paired thermostat
+
 ## 1.5.2
 
 <sub>2026-11-01</sub>
