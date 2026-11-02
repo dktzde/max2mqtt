@@ -4,7 +4,7 @@
    <img src="logo.png" width="300" alt="Home Assistant Add-on MAX! to MQTT Bridge">
 </p>
 
-Coming from [dktzde/maxcube](https://github.com/dktzde/maxcube) (MAX! Cube integration)? Your Cube can stay – see "Replacing a MAX! Cube" below.
+Coming from MAX! Cube integration? Your Cube can stay – see "Replacing a MAX! Cube" below.
 
 ## Start here: gateway_id
 
@@ -31,7 +31,22 @@ Additionally, I was curious to see if I could use AI to help me with the develop
 
 This add-on is a lightweight Go-based bridge connecting a CUL (USB serial or network TCP, 868MHz MAX! protocol) to Home Assistant via MQTT. It focuses on usage of an existing MAX! installation with wall thermostats and radiator valves, only supporting the really required functions to be used with Home Assistant. It's not intended as a full replacement of MAX! Cube or the implementation contained in FHEM.
 
-## History
+```yaml
+serial_port: "tcp://192.168.1.50:2323"
+baud_rate: 38400   # unused for TCP
+mqtt_broker: "tcp://homeassistant.local:1883"
+gateway_id: "0A1B2C"   # old Cube / FHEM address, see above
+```
+
+See [Add-On ReadMe](max2mqtt/README.md) and [Documentation](max2mqtt/DOCS.md).
+
+## Kurzgeschichte & Danksagung
+Max Heizkörperthermostate nutze ich schon sehr lange. Meist sind sie zuverlässig - nur nach einiger Zeit ließ sich der Urlaubsmodus nicht mehr schreiben. Begonnen habe ich mit [MAX! Romote](https://github.com/jutzig/max-remote) auf dem Handy. Danke [Johannes](https://github.com/jutzig) für diese tolle Software. Dann bin ich bin bei Home Assistant gelandet. Mit der Original Integration und den [Verbesserungen](https://github.com/MassiPi/maxcube) von [MassiPi](https://github.com/MassiPi) und [mir](https://github.com/dktzde/maxcube) wurde es schon ganz benutzbar. Jedoch ist der Cube immer noch instabil, obwohl ich den schon per Zeitschaltuhr täglich neu starte. CUN (also flashen des MAX Cube, sodass er stabiler läuft - ging mir schon länger durch den Kopf) - Ein guter Start ist [MAX-via-Cul](https://github.com/powerpaul17/maxcul) wird jedoch kaum noch gepflegt. [FHEM](https://github.com/KastB/addon-fhem) als Home Assistant Addon oder Homegear gingen mir durch den Kopf blieben jedoch liegen, da ich den Aufwand scheute und Homegear wohl auch nicht mehr intensiv gepflegt wird. Nach einiger Recherche kam ich auf die Idee das ein Addon (heute App) der geeignetere Weg gegenüber einer Integration ist. Als Vorlage habe ich mich viel an der [MAX Integration](https://wiki.fhem.de/wiki/MAX) von FHEM orientiert. Danke an dieser Stelle auch an [Peter](https://github.com/pwurbs/max2mqtt) und [Dad-Ju](https://github.com/Dad-Ju/max2mqtt) für die tolle Vorarbeit. Jetzt habe ich die ersten Verbesserungen eingebaut, die es dort noch nicht gibt (senden von Wochenprogrammen als Mo-Fr-Gruppe) und darauf bin ich tatsächlich auch stolz. 
+
+Dank auch an [Bouni](https://github.com/Bouni/max-cube-protocol) für die Protokollreferenz. 
+
+
+## History of the software
 
 Who made what, newest first. Full list with dates: [CHANGELOG](max2mqtt/CHANGELOG.md).
 
@@ -59,15 +74,6 @@ Who made what, newest first. Full list with dates: [CHANGELOG](max2mqtt/CHANGELO
 
 - **v1.0.0 and v1.1.0** — the bridge itself: CUL to MQTT, wall and radiator thermostats, duty cycle management, pairing and association
 
-```yaml
-serial_port: "tcp://192.168.1.50:2323"
-baud_rate: 38400   # unused for TCP
-mqtt_broker: "tcp://homeassistant.local:1883"
-gateway_id: "0A1B2C"   # old Cube / FHEM address, see above
-```
-
-See [Add-On ReadMe](max2mqtt/README.md) and [Documentation](max2mqtt/DOCS.md).
-
 ---
 
-*Built with the help of [Claude Code in Home Assistant](https://github.com/dktzde/hass-claude-code), the add-on that makes developing right next to your own configuration a pleasure. Every feature is tested on my own MAX! Cube flashed with a-culfw, with the MAX! thermostats and window sensors I use every day, before it lands here. Within the 1 % duty cycle, of course, so Claude had to learn patience too.*
+*Built with the help of [Claude Code in Home Assistant](https://github.com/dktzde/hass-claude-code). Every feature is tested on my own MAX! Cube flashed with a-culfw, with the MAX! thermostats and window sensors I use every day.*
