@@ -294,6 +294,7 @@ MAX! devices cannot be asked for their week profile, so the bridge shows the las
 `<day>` is `monday` … `sunday`. Days that did not change are not sent again.
 A day with up to 7 control points takes one radio message, more take two. Messages wait for duty cycle credits if needed.
 Each message waits for the device's Ack before the next one is sent (at most 5 s, usually about 2 s) and is sent again up to 3 times without one. If a day is still not acknowledged, the bridge forgets it (unknown, so the next `programme/set` sends it again instead of skipping it as unchanged) and shows a persistent notification in Home Assistant.
+**Day groups:** when Monday to Friday get the same control points in one command, they go out as one message with day number 8, the same for Saturday and Sunday with day number 7, so a whole week takes 2 messages instead of 7. A radiator thermostat does the same itself when its week program is edited on the device: it sends the program to its linked thermostats as two messages, day 8 (Monday to Friday) and day 7 (Saturday/Sunday); found by listening with a CUL, not documented by FHEM or the Cube protocol. If a device does not acknowledge a group message, the bridge forgets those days and sends single days to that device until the add-on restarts.
 State: `max/<id>/week_profile/<day>` (FHEM syntax, shown by the text entities) and `max/<id>/programme` (whole week, MAX! Cube format).
 
 ### After a restart
