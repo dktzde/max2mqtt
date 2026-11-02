@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func resetDayGroups(t *testing.T) {
@@ -117,5 +118,49 @@ func TestSameProgramEveryDayGoesOutAsOneTelegram(t *testing.T) {
 	tx := queuedTX()
 	if len(tx) != 1 || payloadOf(tx[0]) != "093C424EE439204520452045204520" {
 		t.Fatalf("want one Monday-Sunday telegram, got %v", tx)
+	}
+}
+
+// Through the real send path: an unacknowledged group telegram must reach weekProfileDaysUnacked via
+// the queue's callback, otherwise its days would stay "known" and be skipped as unchanged
+func TestUnackedGroupTelegramThroughQueue(t *testing.T) {
+	setBulkAck(t, 60*time.Millisecond, 1)
+	recordNotifications(t, time.Minute)
+	credits, sent, start := startTxTest(t, time.Minute)
+	resetDayGroups(t)
+	credits.Store(900)
+	start()
+	const dev = "0A1B2C"
+	slots := []ProgrammeSlot{{Temp: 16, Until: "07:00"}, {Temp: 14, Until: "24:00"}}
+	weekend := map[int][]ProgrammeSlot{0: slots, 1: slots}
+
+	setProgramme(dev, weekend, true)
+	select {
+	case c := <-sent:
+		if payloadOf(c)[:2] != "07" {
+			t.Fatalf("want the Saturday/Sunday group telegram, got %s", c)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("group telegram not sent")
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for dayGroupsAllowed(dev) {
+		if time.Now().After(deadline) {
+			t.Fatal("unacknowledged group telegram did not disable day groups")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// The days were forgotten, so they are sent again, now one by one
+	setProgramme(dev, weekend, true)
+	for _, want := range []string{"00", "01"} {
+		select {
+		case c := <-sent:
+			if payloadOf(c)[:2] != want {
+				t.Fatalf("want day %s, got %s", want, c)
+			}
+		case <-time.After(time.Second):
+			t.Fatalf("day %s not sent", want)
+		}
 	}
 }
