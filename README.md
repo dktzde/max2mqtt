@@ -76,4 +76,4 @@ Who made what, newest first. Full list with dates: [CHANGELOG](max2mqtt/CHANGELO
 
 ---
 
-*Built with the help of [Claude Code in Home Assistant](https://github.com/dktzde/hass-claude-code). Every feature is tested on my own MAX! Cube flashed with a-culfw, with the MAX! thermostats and window sensors I use every day.*
+*I use about 10 MAX Theramostates in my Home. This Addon was built the help of [Claude Addon](https://github.com/dktzde/hass-claude-code). And is used and tested on an everyday basis.*
