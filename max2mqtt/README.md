@@ -170,7 +170,7 @@ These are the features:
 -   **Auto-Discovery**: Fully compliant with HA MQTT Discovery (Climate, Number, Select, Binary Sensor).
 -   **Entities**:
     - **Climate**: Thermostat control with support for `temperature` (setpoint), `current_temperature` (actual), `hvac_action` (heating/idle; radiator thermostats: heating while the valve is open), and `hvac_mode` (auto/heat/off).
-    - **Climate attributes** like the MAX! Cube integration (`max/<id>/attributes`): `valve_position`, `programme`, `comfort_temp`, `eco_temp`, `window_open_temp`, `window_open_duration` (minutes), `temp_offset`, `boost_value`, `boost_duration`, `decalc_day` (0 = Saturday), `decalc_time`, `max_valve`, `valve_offset`, `room`, `device_rf_address`. Config values and the programme appear once they are known.
+    - **Climate attributes** like the MAX! Cube integration (`max/<id>/attributes`): `valve_position`, `programme`, `comfort_temp`, `eco_temp`, `window_open_temp`, `window_open_duration` (minutes), `temp_offset`, `boost_value`, `boost_duration`, `decalc_day` (0 = Saturday), `decalc_time`, `max_valve`, `valve_offset`, `room`, `device_rf_address`, and `programme_status` (per day sent: `pending`, `acknowledged` or `not_acknowledged` with its time). Config values and the programme appear once they are known.
     - **Number / Select / Text / Button**: Config entities (eco/comfort/min/max/offset/window/valve/display/group/week profile/disassociate/factory reset).
     - **Climate presets** like the MAX! Cube integration: comfort, eco, Window Open, On, boost; `none` ends a boost (back to the mode before) or switches to auto.
     - **Vacation mode**: hold a temperature until a date/time via `max/<id>/vacation/set` (see DOCS); end date as "Vacation Until" sensor.
