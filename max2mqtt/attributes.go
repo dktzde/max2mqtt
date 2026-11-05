@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"sync"
 )
 
 // Climate attributes in the style of the MAX! Cube integration, so templates and automations
@@ -67,11 +68,17 @@ func buildAttributes(deviceID string) map[string]interface{} {
 	return attrs
 }
 
+// attributesPublishMu keeps snapshot and publish together, so an older snapshot can never be
+// published (retained) after a newer one
+var attributesPublishMu sync.Mutex
+
 // publishAttributes publishes the climate attributes of a device, retained
 func publishAttributes(deviceID string) {
 	if mqttClient == nil {
 		return
 	}
+	attributesPublishMu.Lock()
+	defer attributesPublishMu.Unlock()
 	bytes, err := json.Marshal(buildAttributes(deviceID))
 	if err != nil {
 		return

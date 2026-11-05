@@ -34,16 +34,16 @@ func statusAttr(t *testing.T, fc *fakeMQTT, dev string) map[string]DayStatus {
 	return attrs.Status
 }
 
-// waitStatus waits until day of dev has the wanted state in programme_status
-func waitStatus(t *testing.T, dev, day, want string) {
+// waitStatus waits until the published programme_status of dev shows the wanted state for day
+func waitStatus(t *testing.T, fc *fakeMQTT, dev, day, want string) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
 	for {
-		if st := programmeStatusOf(dev); st != nil && st[day].State == want {
+		if st := statusAttr(t, fc, dev); st[day].State == want {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("%s: state %+v, want %s", day, programmeStatusOf(dev)[day], want)
+			t.Fatalf("%s: published %+v, want %s", day, statusAttr(t, fc, dev)[day], want)
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -85,7 +85,7 @@ func TestSentDayIsPendingUntilAcknowledged(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("Monday not sent")
 	}
-	waitStatus(t, dev, "monday", statusAcknowledged)
+	waitStatus(t, fc, dev, "monday", statusAcknowledged)
 	if st := statusAttr(t, fc, dev); st["monday"].State != statusAcknowledged {
 		t.Fatalf("published %+v, want monday acknowledged", st)
 	}
@@ -104,7 +104,7 @@ func TestUnacknowledgedDayIsReported(t *testing.T) {
 	slots := []ProgrammeSlot{{Temp: 16, Until: "07:00"}, {Temp: 14, Until: "24:00"}}
 
 	setProgramme(dev, map[int][]ProgrammeSlot{3: slots}, true) // Tuesday, never acknowledged
-	waitStatus(t, dev, "tuesday", statusNotAcknowledged)
+	waitStatus(t, fc, dev, "tuesday", statusNotAcknowledged)
 	if st := statusAttr(t, fc, dev); st["tuesday"].State != statusNotAcknowledged {
 		t.Fatalf("published %+v, want tuesday not_acknowledged", st)
 	}
@@ -116,6 +116,7 @@ func TestTwoPartDayNeedsBothAcks(t *testing.T) {
 	credits, sent, start := startTxTest(t, time.Minute)
 	resetProgrammeStatus(t)
 	resetDayGroups(t)
+	fc := mqttClient.(*fakeMQTT)
 	credits.Store(900)
 	start()
 	const dev = "0A1B2C"
@@ -141,7 +142,7 @@ func TestTwoPartDayNeedsBothAcks(t *testing.T) {
 			t.Fatalf("part %d not sent", part)
 		}
 	}
-	waitStatus(t, dev, "wednesday", statusAcknowledged)
+	waitStatus(t, fc, dev, "wednesday", statusAcknowledged)
 }
 
 // parseCnt reads the message counter (second byte) of a queued "Zs" telegram
@@ -152,4 +153,47 @@ func parseCnt(t *testing.T, tx string) int {
 		t.Fatalf("counter of %s: %v", tx, err)
 	}
 	return int(cnt)
+}
+
+// An Ack for an older transfer of a day must not mark a newer, still pending transfer as acknowledged
+func TestOlderAckDoesNotConfirmNewerTransfer(t *testing.T) {
+	setBulkAck(t, 2*time.Second, 3)
+	credits, sent, start := startTxTest(t, time.Minute)
+	resetProgrammeStatus(t)
+	resetDayGroups(t)
+	fc := mqttClient.(*fakeMQTT)
+	credits.Store(900)
+	start()
+	const dev = "0A1B2C"
+	first := []ProgrammeSlot{{Temp: 16, Until: "07:00"}, {Temp: 14, Until: "24:00"}}
+	second := []ProgrammeSlot{{Temp: 17, Until: "07:00"}, {Temp: 14, Until: "24:00"}}
+
+	setProgramme(dev, map[int][]ProgrammeSlot{2: first}, true)
+	var c1 string
+	select {
+	case c1 = <-sent:
+	case <-time.After(time.Second):
+		t.Fatal("first transfer not sent")
+	}
+	setProgramme(dev, map[int][]ProgrammeSlot{2: second}, true) // queued while the first waits for its Ack
+	txMgr.AckReceived(dev, parseCnt(t, c1))
+	select {
+	case <-sent: // the second transfer goes out
+	case <-time.After(time.Second):
+		t.Fatal("second transfer not sent")
+	}
+	time.Sleep(50 * time.Millisecond)
+	if st := statusAttr(t, fc, dev)["monday"].State; st != statusPending {
+		t.Fatalf("after the Ack of the first transfer: %s, want pending (second still open)", st)
+	}
+}
+
+func TestInvalidDeviceAddressStaysWithoutStatus(t *testing.T) {
+	fc := resetTestState()
+	resetProgrammeStatus(t)
+	slots := []ProgrammeSlot{{Temp: 16, Until: "07:00"}, {Temp: 14, Until: "24:00"}}
+	setProgramme("XYZ", map[int][]ProgrammeSlot{2: slots}, true)
+	if st := statusAttr(t, fc, "XYZ"); st != nil {
+		t.Fatalf("invalid address: want no programme_status, got %+v", st)
+	}
 }
