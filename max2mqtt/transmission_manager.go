@@ -27,6 +27,8 @@ type QueuedCommand struct {
 	Cnt int
 	// Tries counts how often a bulk command was sent
 	Tries int
+	// OnAcked is called when the device acknowledged a bulk command
+	OnAcked func()
 	// OnUnacked is called when a bulk command got no Ack after bulkMaxTries tries
 	OnUnacked func()
 }
@@ -152,12 +154,13 @@ func (t *TransmissionManager) Enqueue(devicedID, payload, description string) {
 // EnqueueBulk adds a command of a long transfer (week profile), see QueuedCommand.Bulk.
 // It does not wait for an Ack; use EnqueueBulkAcked for telegrams to a device.
 func (t *TransmissionManager) EnqueueBulk(devicedID, payload, description string) {
-	t.EnqueueBulkAcked(devicedID, payload, description, 0, nil)
+	t.EnqueueBulkAcked(devicedID, payload, description, 0, nil, nil)
 }
 
 // EnqueueBulkAcked adds a bulk command whose Ack (message counter cnt) is awaited before the
-// next telegram goes out; onUnacked is called when no Ack came after bulkMaxTries tries.
-func (t *TransmissionManager) EnqueueBulkAcked(devicedID, payload, description string, cnt int, onUnacked func()) {
+// next telegram goes out; onAcked is called after the device's Ack, onUnacked when no Ack came
+// after bulkMaxTries tries. Both may be nil.
+func (t *TransmissionManager) EnqueueBulkAcked(devicedID, payload, description string, cnt int, onAcked, onUnacked func()) {
 	t.enqueue(QueuedCommand{
 		Payload:     payload,
 		Description: description,
@@ -165,6 +168,7 @@ func (t *TransmissionManager) EnqueueBulkAcked(devicedID, payload, description s
 		CreatedAt:   time.Now(),
 		Bulk:        true,
 		Cnt:         cnt,
+		OnAcked:     onAcked,
 		OnUnacked:   onUnacked,
 	})
 }
@@ -228,6 +232,9 @@ func (t *TransmissionManager) finishBulk(cmd *QueuedCommand) bool {
 	if t.awaitAck() {
 		slog.Debug("TxMgr: Week profile message acknowledged", "device", cmd.DeviceID, "desc", cmd.Description, "tries", cmd.Tries)
 		t.bulkWait.done(*cmd)
+		if cmd.OnAcked != nil {
+			cmd.OnAcked()
+		}
 		return true
 	}
 	if cmd.Tries < bulkMaxTries {

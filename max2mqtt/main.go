@@ -1193,17 +1193,18 @@ func gatewayAddrHex() string {
 
 // sendCommand constructs and sends a MAX! message via CUL
 func sendCommand(dstAddr string, typeByte byte, payload []byte, description string) {
-	queueCommand(dstAddr, typeByte, payload, description, false, nil)
+	queueCommand(dstAddr, typeByte, payload, description, false, nil, nil)
 }
 
 // sendBulkCommand sends one message of a long transfer (week profile): it may wait longer
 // for duty cycle credits, lets normal commands go first and waits for the device's Ack before the
-// next telegram; onUnacked is called when the device did not acknowledge it after all tries
-func sendBulkCommand(dstAddr string, typeByte byte, payload []byte, description string, onUnacked func()) {
-	queueCommand(dstAddr, typeByte, payload, description, true, onUnacked)
+// next telegram; onAcked is called after the device's Ack, onUnacked when the device did not
+// acknowledge it after all tries
+func sendBulkCommand(dstAddr string, typeByte byte, payload []byte, description string, onAcked, onUnacked func()) {
+	queueCommand(dstAddr, typeByte, payload, description, true, onAcked, onUnacked)
 }
 
-func queueCommand(dstAddr string, typeByte byte, payload []byte, description string, bulk bool, onUnacked func()) {
+func queueCommand(dstAddr string, typeByte byte, payload []byte, description string, bulk bool, onAcked, onUnacked func()) {
 	dstAddr = strings.ToUpper(dstAddr)
 	cnt := nextMsgCounter()
 	srcBytes := getGatewayAddress()
@@ -1260,7 +1261,7 @@ func queueCommand(dstAddr string, typeByte byte, payload []byte, description str
 	if txMgr != nil {
 		descWithCnt := fmt.Sprintf("%s (Cnt:%d grp:%d)", description, cnt, groupID)
 		if bulk {
-			txMgr.EnqueueBulkAcked(dstAddr, cmd, descWithCnt, cnt, onUnacked)
+			txMgr.EnqueueBulkAcked(dstAddr, cmd, descWithCnt, cnt, onAcked, onUnacked)
 		} else {
 			txMgr.Enqueue(dstAddr, cmd, descWithCnt)
 		}

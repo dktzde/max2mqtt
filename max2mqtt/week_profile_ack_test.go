@@ -43,8 +43,8 @@ func TestWeekProfileWaitsForAckBeforeNextDay(t *testing.T) {
 	setBulkAck(t, 2*time.Second, 3)
 	credits, sent, start := startTxTest(t, time.Minute)
 	credits.Store(900)
-	txMgr.EnqueueBulkAcked(ackWaitTestDevice, "ZsMON", "week profile Mon", 11, nil)
-	txMgr.EnqueueBulkAcked(ackWaitTestDevice, "ZsTUE", "week profile Tue", 12, nil)
+	txMgr.EnqueueBulkAcked(ackWaitTestDevice, "ZsMON", "week profile Mon", 11, nil, nil)
+	txMgr.EnqueueBulkAcked(ackWaitTestDevice, "ZsTUE", "week profile Tue", 12, nil, nil)
 	start()
 
 	expectSent(t, sent, "ZsMON")
@@ -64,8 +64,8 @@ func TestWeekProfileSentAgainWithoutAck(t *testing.T) {
 	credits, sent, start := startTxTest(t, time.Minute)
 	credits.Store(900)
 	var unacked atomic.Int32
-	txMgr.EnqueueBulkAcked(ackWaitTestDevice, "ZsMON", "week profile Mon", 21, func() { unacked.Add(1) })
-	txMgr.EnqueueBulkAcked(ackWaitTestDevice, "ZsTUE", "week profile Tue", 22, nil)
+	txMgr.EnqueueBulkAcked(ackWaitTestDevice, "ZsMON", "week profile Mon", 21, nil, func() { unacked.Add(1) })
+	txMgr.EnqueueBulkAcked(ackWaitTestDevice, "ZsTUE", "week profile Tue", 22, nil, nil)
 	start()
 
 	for i := 0; i < 3; i++ {
@@ -83,7 +83,7 @@ func TestWeekProfileRetryStopsAfterAck(t *testing.T) {
 	credits, sent, start := startTxTest(t, time.Minute)
 	credits.Store(900)
 	var unacked atomic.Int32
-	txMgr.EnqueueBulkAcked(ackWaitTestDevice, "ZsMON", "week profile Mon", 31, func() { unacked.Add(1) })
+	txMgr.EnqueueBulkAcked(ackWaitTestDevice, "ZsMON", "week profile Mon", 31, nil, func() { unacked.Add(1) })
 	start()
 
 	expectSent(t, sent, "ZsMON")
