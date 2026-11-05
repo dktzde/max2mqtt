@@ -1,3 +1,9 @@
+## 1.6.2
+
+<sub>2026-11-05</sub>
+
+- **Week profile acknowledgement in Home Assistant:** the new climate attribute `programme_status` shows for each day sent whether the device acknowledged it: `pending`, `acknowledged` (all messages of the day acknowledged) or `not_acknowledged` (no Ack after 3 tries), each with its time. Before, a successful transfer could only be seen in the add-on log
+
 ## 1.6.1
 
 <sub>2026-11-02</sub>
