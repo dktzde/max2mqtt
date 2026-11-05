@@ -42,7 +42,17 @@ A MAX! Cube flashed with a-culfw ("CUBe" build) also works as a TCP CUL on port 
 
 ### Auto-Ack (`Za`)
 
-On every (re)connect the bridge sends `Za<gateway_id>` to the CUL. culfw then acknowledges every packet addressed to the gateway by itself (same as FHEM `CUL_MAX`). Without this, paired devices (radiator thermostats, wall thermostats, shutter contacts) do not get an Ack for their state messages: they repeat them, which costs battery and duty cycle, and set their `rferror` bit. Acks with the gateway as source are the CUL's own auto-Acks and are ignored by the bridge.
+On every (re)connect the bridge sends `Za<gateway_id>` to the CUL (same as FHEM `CUL_MAX`). culfw then acknowledges these messages by itself, about 20 ms after receiving them, but only if they are addressed to `gateway_id` (culfw `rf_moritz.c`, `moritz_handleAutoAck`):
+
+- window contacts: ShutterContactState `0x30`
+- SetTemperature `0x40`
+- push buttons: PushButtonState `0x50`
+
+Without an Ack, these devices repeat their message (a window contact sent each state 4 times with the same counter in our test) and set their `rferror` bit, which costs battery and duty cycle. Radiator thermostat state (`0x60`) is sent as broadcast and needs no Ack; wall thermostat state (`0x70`, `0x42`) is not acknowledged by culfw either.
+
+The CUL reports every Ack it sends as a normal `Z…` line. These Acks come from the gateway address and are ignored by the bridge (log level `debug`: "Ignored own auto-Ack").
+
+Requires culfw 1.52 or newer (FHEM uses the same limit; older firmware switches MAX mode off on `Za`). Every a-culfw version supports it.
 
 ## Time Synchronization
 
