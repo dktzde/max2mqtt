@@ -61,6 +61,9 @@ func buildAttributes(deviceID string) map[string]interface{} {
 		attrs["programme"] = p
 	}
 	programmeMu.Unlock()
+	if st := programmeStatusOf(deviceID); st != nil {
+		attrs["programme_status"] = st
+	}
 	return attrs
 }
 

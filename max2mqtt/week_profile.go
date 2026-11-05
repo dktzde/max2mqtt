@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
@@ -204,14 +205,88 @@ func sendDaySlots(deviceID string, day int, slots []ProgrammeSlot) {
 
 // sendProfileTelegrams sends the points of one day or day group: control points 1-7 in part 0,
 // points 8-13 in part 1 only when there are more than 7 (as FHEM does), which saves airtime and
-// duty cycle
+// duty cycle. The days count as acknowledged once the device acknowledged every part.
 func sendProfileTelegrams(deviceID string, index int, name string, days []int, slots []ProgrammeSlot) {
 	data := encodeDaySlots(slots)
-	unacked := func() { weekProfileDaysUnacked(deviceID, name, days, index >= len(weekDays)) }
-	sendBulkCommand(deviceID, 0x10, append([]byte{byte(index)}, data[:14]...), fmt.Sprintf("WeekProfile %s part0", name), unacked)
+	parts := 1
 	if len(slots) > 7 {
-		sendBulkCommand(deviceID, 0x10, append([]byte{0x10 | byte(index)}, data[14:]...), fmt.Sprintf("WeekProfile %s part1", name), unacked)
+		parts = 2
 	}
+	setProgrammeStatus(deviceID, days, statusPending)
+	var mu sync.Mutex
+	left, failed := parts, false
+	acked := func() {
+		mu.Lock()
+		left--
+		done := left == 0 && !failed
+		mu.Unlock()
+		if done {
+			setProgrammeStatus(deviceID, days, statusAcknowledged)
+		}
+	}
+	unacked := func() {
+		mu.Lock()
+		first := !failed
+		failed = true
+		mu.Unlock()
+		if first {
+			weekProfileDaysUnacked(deviceID, name, days, index >= len(weekDays))
+		}
+	}
+	sendBulkCommand(deviceID, 0x10, append([]byte{byte(index)}, data[:14]...), fmt.Sprintf("WeekProfile %s part0", name), acked, unacked)
+	if parts == 2 {
+		sendBulkCommand(deviceID, 0x10, append([]byte{0x10 | byte(index)}, data[14:]...), fmt.Sprintf("WeekProfile %s part1", name), acked, unacked)
+	}
+}
+
+// Acknowledgement state of the days sent last, published in the attribute programme_status
+// ({"monday": {"state": "acknowledged", "at": "2026-11-05T09:41:43+01:00"}, ...}), so Home
+// Assistant can show whether the device took a new week profile. Not persisted.
+const (
+	statusPending         = "pending"
+	statusAcknowledged    = "acknowledged"
+	statusNotAcknowledged = "not_acknowledged"
+)
+
+// DayStatus is the acknowledgement state of one day of the week profile
+type DayStatus struct {
+	State string `json:"state"`
+	At    string `json:"at"`
+}
+
+var (
+	programmeStatusMu sync.Mutex
+	programmeStatus   = map[string]map[string]DayStatus{}
+)
+
+// setProgrammeStatus sets the state of the given days (MAX! day numbers) and publishes the attributes
+func setProgrammeStatus(deviceID string, days []int, state string) {
+	at := time.Now().Format(time.RFC3339)
+	programmeStatusMu.Lock()
+	m := programmeStatus[deviceID]
+	if m == nil {
+		m = map[string]DayStatus{}
+		programmeStatus[deviceID] = m
+	}
+	for _, d := range days {
+		m[weekDays[d]] = DayStatus{State: state, At: at}
+	}
+	programmeStatusMu.Unlock()
+	publishAttributes(deviceID)
+}
+
+// programmeStatusOf returns a copy of the acknowledgement state of a device (nil when nothing was sent)
+func programmeStatusOf(deviceID string) map[string]DayStatus {
+	programmeStatusMu.Lock()
+	defer programmeStatusMu.Unlock()
+	if len(programmeStatus[deviceID]) == 0 {
+		return nil
+	}
+	out := map[string]DayStatus{}
+	for d, s := range programmeStatus[deviceID] {
+		out[d] = s
+	}
+	return out
 }
 
 // groupDays replaces the days of a day group by one group telegram when all of them are to be sent
@@ -264,6 +339,7 @@ func weekProfileDayUnacked(deviceID string, day int) {
 // weekProfileDaysUnacked does the same for the days of one telegram (a day or a day group). After
 // an unacknowledged group telegram the device gets single days from then on.
 func weekProfileDaysUnacked(deviceID, name string, days []int, group bool) {
+	setProgrammeStatus(deviceID, days, statusNotAcknowledged)
 	programmeMu.Lock()
 	for _, d := range days {
 		delete(programmes[deviceID], weekDays[d])
