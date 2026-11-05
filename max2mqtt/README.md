@@ -25,7 +25,7 @@ Format: 6 hex digits without `0x`, e.g. `0A1B2C`.
      That is the address your devices still report to – the Cube's RF address (ignore `dst=000000` and addresses of your own devices).
 2. **Switch the Cube off for good.** Two gateways with the same address would both acknowledge and send, and the Cube would overwrite settings.
 3. Set `gateway_id` to the Cube's RF address and restart the add-on.
-4. **Check:** devices stop repeating their messages (the CUL now acknowledges them, see [Auto-Ack](DOCS.md#auto-ack-za)), the RF error sensors turn off, and a setpoint change from Home Assistant is confirmed in the log (`Short Ack applied pending setpoint`, no retry).
+4. **Check:** window contacts stop repeating their messages (the CUL now acknowledges them, see [Auto-Ack](DOCS.md#auto-ack-za)), their RF error sensor turns off, and a setpoint change from Home Assistant is confirmed in the log (`Short Ack applied pending setpoint`, no retry).
 
 Nothing has to be transferred for the devices to work: week programs, eco/comfort temperatures and associations (e.g. shutter contact ↔ thermostat) are stored in the devices.
 The bridge cannot read them back over the radio, though. To see them in Home Assistant (attributes, config entities, presets eco/comfort/Window Open) and to change single values safely, import them once from the Cube integration: see [Migrating from the MAX! Cube integration](DOCS.md#migrating-from-the-max-cube-integration).
@@ -116,7 +116,7 @@ This release makes the bridge a drop-in replacement for the MAX! Cube integratio
 
 ### v1.3.3 (2026-10-25, this fork) — Auto-Ack, valve position, shutter contacts
 
-- **Auto-Ack (`Za`):** the CUL acknowledges every message sent to `gateway_id` by itself (like FHEM), so devices no longer repeat their messages or set their RF error bit, saving battery and duty cycle
+- **Auto-Ack (`Za`):** the CUL acknowledges window contact, SetTemperature and push button messages sent to `gateway_id` by itself (like FHEM), so these devices no longer repeat their messages or set their RF error bit, saving battery and duty cycle
 - **Valve position** sensor (0–100 %) for each radiator thermostat, retained on `max/<id>/valve`
 - **RF error** diagnostic binary sensor (`rf_error` in `max/<id>/state`)
 - **Shutter contacts** (`0x30`): window open/closed, battery and RF error binary sensors; link them with a radiator thermostat, see [Device Association](#device-association-linking-devices)
@@ -154,7 +154,7 @@ But it should work with fresh devices too...
 These are the features:
 
 -   **CUL Communication**: Reads and sends `Z` telegrams from CUL-FW compatible devices over USB serial or TCP (`tcp://host:port`).
--   **Auto-Ack**: The CUL acknowledges all messages sent to `gateway_id` (`Za`), so devices do not repeat them.
+-   **Auto-Ack**: The CUL acknowledges window contact, SetTemperature and push button messages sent to `gateway_id` (`Za`), so devices do not repeat them.
 -   **MAX! Protocol Parsing**: Decodes Temperature, Mode, Battery State, Valve Position, RF error and Window State.
 -   **Time Synchronization**: Automatically syncs time with devices.
 -   **Pairing Mode**: Trigger via MQTT (`max/bridge/pair`) to pair new devices.
