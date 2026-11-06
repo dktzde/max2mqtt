@@ -197,6 +197,7 @@ These are the features:
 - fakeWT / fakeSC (external sensor simulation)
 
 Prefer Home Assistant schedules for day-to-day heating; the device week profile can be set per day (text entities) or in MAX! Cube format, see DOCS.
+To edit the week profile as a curve in the dashboard, use the [max-week-profile-card](https://github.com/dktzde/max-week-profile-card) (pre-release).
 
 ## Installation and Configuration as Home Assistant Add-on
 

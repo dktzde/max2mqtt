@@ -2,7 +2,7 @@
 
 Handover file for the maintainer and for Claude Code sessions working on this repository. **Read this first, and update it after every step** (state, decisions, next steps), so the next session can continue without the chat history.
 
-Last updated: 2026-11-05 (1.6.2: attribute programme_status, PR open, not on the device yet)
+Last updated: 2026-11-06 (README links to the week profile card; state of 1.6.2 see below)
 
 ## Current state
 
