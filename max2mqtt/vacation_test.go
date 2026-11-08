@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -106,5 +108,48 @@ func TestVacationReportsUnknownActualTemperature(t *testing.T) {
 	updateDeviceState(dev, decodeThermostatStatus(0x60, []byte{0x18, 0x50, 0x28, 0x00, 201}, true))
 	if state := fc.get("max/" + dev + "/state"); !strings.Contains(state, `"current_temperature":20.1`) {
 		t.Fatalf("auto again: actual temperature missing: %s", state)
+	}
+}
+
+func TestVacationAckReportsUnknownActualTemperature(t *testing.T) {
+	setupAckCounterTest(t)
+	fc := mqttClient.(*fakeMQTT)
+	// Wall thermostat (no valve): 18.0 °C measured, setpoint 20 °C → heating
+	updateDeviceState(ackTestDevice, decodeWallThermostatControl([]byte{40, 180}))
+	if state := fc.get("max/" + ackTestDevice + "/state"); !strings.Contains(state, `"hvac_action":"heating"`) {
+		t.Fatalf("before vacation: %s", state)
+	}
+	ackTracker.TrackVacation(ackTestDevice, 20, "2026-11-08 17:00")
+	sendCommand(ackTestDevice, 0x40, []byte{0xA8, 0x02, 0x08, 0x22}, "Set vacation")
+	receiveShortAck(ackTestDevice, ackTestGateway, sentCounter(t))
+	state := fc.get("max/" + ackTestDevice + "/state")
+	if !strings.Contains(state, `"current_temperature":null`) || !strings.Contains(state, `"hvac_action":"idle"`) {
+		t.Fatalf("after vacation Ack: %s", state)
+	}
+}
+
+func TestVacationKeepsFreshWallThermostatMeasurement(t *testing.T) {
+	fc := resetTestState()
+	const dev = "0A1B2C"
+	until := []byte{0x02 | 0x05<<5, 0x80 | 26, 36}
+	updateDeviceState(dev, decodeThermostatStatus(0x70, append([]byte{0x1A, 0x00, 0x28}, until...), false))
+	updateDeviceState(dev, decodeWallThermostatControl([]byte{40, 195}))
+	if state := fc.get("max/" + dev + "/state"); !strings.Contains(state, `"current_temperature":19.5`) {
+		t.Fatalf("measurement of 0x42 lost in vacation: %s", state)
+	}
+}
+
+func TestVacationClearsRestoredActualTemperature(t *testing.T) {
+	resetTestState()
+	deviceDataFile = filepath.Join(t.TempDir(), "devices.json")
+	t.Setenv("DEVICE_DATA_FILE", deviceDataFile)
+	const dev = "0A1B2C"
+	saved := `{"` + dev + `":{"state":{"temperature":20,"current_temperature":16.5,"mode":"vacation","hvac_mode":"off","until":"2026-11-08 17:00"}}}`
+	if err := os.WriteFile(deviceDataFile, []byte(saved), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loadDeviceData()
+	if st := stateCache[dev]; st == nil || st.Mode != "vacation" || st.CurrentTemperature != nil {
+		t.Fatalf("state after restart: %+v", st)
 	}
 }
