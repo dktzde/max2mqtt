@@ -125,6 +125,7 @@ func loadDeviceData() {
 	for id, d := range devices {
 		if d.State != nil {
 			d.State.ValvePosition = d.ValvePosition
+			clearActualTemperatureInVacation(d.State) // saved by a version that kept it
 			stateMutex.Lock()
 			stateCache[id] = d.State
 			stateMutex.Unlock()

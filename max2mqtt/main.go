@@ -590,6 +590,10 @@ func updateDeviceState(srcAddr string, newData *MaxDeviceData) {
 	if newData.Until != "" {
 		existing.Until = newData.Until
 	}
+	if newData.CurrentTemperature == nil {
+		// keep a fresh measurement (wall thermostat control 0x42), forget only the cached one
+		clearActualTemperatureInVacation(existing)
+	}
 	if newData.HVACMode != "" {
 		existing.HVACMode = newData.HVACMode
 	}
@@ -614,29 +618,7 @@ func updateDeviceState(srcAddr string, newData *MaxDeviceData) {
 		verificationMgr.CheckVerification(srcAddr, existing.Temperature)
 	}
 
-	// HVAC action like the MAX! Cube integration: radiator thermostats heat while the
-	// valve is open. Otherwise (wall thermostats, valve not known yet):
-	// if current_temperature < temperature, then "heating" else "idle"
-	if existing.ValvePosition != nil {
-		switch {
-		case *existing.ValvePosition > 0:
-			existing.HVACAction = "heating"
-		case existing.HVACMode == "off":
-			existing.HVACAction = "off"
-		default:
-			existing.HVACAction = "idle"
-		}
-	} else if existing.CurrentTemperature != nil {
-		if *existing.CurrentTemperature < existing.Temperature {
-			existing.HVACAction = "heating"
-		} else {
-			existing.HVACAction = "idle"
-		}
-	} else {
-		// Without current temp, we default to idle to be safe,
-		// or we could leave it explicitly empty/unknown.
-		existing.HVACAction = "idle"
-	}
+	updateHVACAction(existing)
 
 	// Make a copy for publishing to avoid race conditions after unlock
 	dataToPublish := *existing
@@ -649,6 +631,31 @@ func updateDeviceState(srcAddr string, newData *MaxDeviceData) {
 	slog.Info("Decoded Data", "src", srcAddr, "data", &dataToPublish)
 	publishState(srcAddr, &dataToPublish)
 	publishAttributes(srcAddr)
+}
+
+// updateHVACAction derives hvac_action like the MAX! Cube integration: radiator thermostats heat
+// while the valve is open; otherwise (wall thermostats, valve not known yet) from the temperatures.
+func updateHVACAction(d *MaxDeviceData) {
+	if d.ValvePosition != nil {
+		switch {
+		case *d.ValvePosition > 0:
+			d.HVACAction = "heating"
+		case d.HVACMode == "off":
+			d.HVACAction = "off"
+		default:
+			d.HVACAction = "idle"
+		}
+	} else if d.CurrentTemperature != nil {
+		if *d.CurrentTemperature < d.Temperature {
+			d.HVACAction = "heating"
+		} else {
+			d.HVACAction = "idle"
+		}
+	} else {
+		// Without current temp, we default to idle to be safe,
+		// or we could leave it explicitly empty/unknown.
+		d.HVACAction = "idle"
+	}
 }
 
 // presetFromStatus returns the preset for a received status, like the MAX! Cube integration:

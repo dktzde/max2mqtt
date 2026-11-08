@@ -1,3 +1,9 @@
+## 1.6.3
+
+<sub>2026-11-08</sub>
+
+- **Actual temperature unknown in vacation mode:** in vacation mode a thermostat sends the end date of the vacation instead of a measurement, so the last measured temperature stayed in Home Assistant for the whole vacation and looked current. It is now reported as unknown until the device sends a new measurement after the vacation
+
 ## 1.6.2
 
 <sub>2026-11-05</sub>

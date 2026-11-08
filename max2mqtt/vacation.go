@@ -154,3 +154,13 @@ func handleMQTTVacation(client mqtt.Client, msg mqtt.Message) {
 		})
 	}
 }
+
+// clearActualTemperatureInVacation forgets the actual temperature while the device is in vacation mode:
+// its status then carries the end date instead of a measurement (bytes 3-5), so the last known value
+// would stay unchanged until the vacation ends. Home Assistant shows it as unknown instead; the next
+// status after the vacation brings a new measurement.
+func clearActualTemperatureInVacation(d *MaxDeviceData) {
+	if d.Mode == "vacation" {
+		d.CurrentTemperature = nil
+	}
+}

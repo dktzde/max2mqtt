@@ -174,6 +174,8 @@ func (a *AckTracker) ApplySetpointAck(deviceID string, cnt int) bool {
 		existing.HVACMode = hvac
 	}
 	existing.Until = until
+	clearActualTemperatureInVacation(existing)
+	updateHVACAction(existing)
 	if existing.Mode == "boost" {
 		existing.PresetMode = "boost"
 	} else if existing.PresetMode == "boost" {
