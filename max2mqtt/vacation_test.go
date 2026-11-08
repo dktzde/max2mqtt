@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -84,5 +85,26 @@ func TestVacationNeedsTemperatureWhenEcoUnknown(t *testing.T) {
 	}
 	if temp, _, err := parseVacationCommand(`{"temperature": 12, "until": "2026-11-02 18:00"}`, 0, now); err != nil || temp != 12 {
 		t.Fatalf("temp %.1f err %v", temp, err)
+	}
+}
+
+func TestVacationReportsUnknownActualTemperature(t *testing.T) {
+	fc := resetTestState()
+	const dev = "0A1B2C"
+	// Auto with a measurement of 16.5 °C
+	updateDeviceState(dev, decodeThermostatStatus(0x60, []byte{0x18, 0x50, 0x28, 0x00, 165}, true))
+	if state := fc.get("max/" + dev + "/state"); !strings.Contains(state, `"current_temperature":16.5`) {
+		t.Fatalf("auto: actual temperature missing: %s", state)
+	}
+	// Vacation: no measurement in the status, the old one must not stay
+	until := []byte{0x02 | 0x05<<5, 0x80 | 26, 36}
+	updateDeviceState(dev, decodeThermostatStatus(0x60, append([]byte{0x1A, 0x50, 0x28}, until...), true))
+	if state := fc.get("max/" + dev + "/state"); !strings.Contains(state, `"current_temperature":null`) {
+		t.Fatalf("vacation: actual temperature not unknown: %s", state)
+	}
+	// Back in auto with a new measurement
+	updateDeviceState(dev, decodeThermostatStatus(0x60, []byte{0x18, 0x50, 0x28, 0x00, 201}, true))
+	if state := fc.get("max/" + dev + "/state"); !strings.Contains(state, `"current_temperature":20.1`) {
+		t.Fatalf("auto again: actual temperature missing: %s", state)
 	}
 }

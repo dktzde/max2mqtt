@@ -590,6 +590,7 @@ func updateDeviceState(srcAddr string, newData *MaxDeviceData) {
 	if newData.Until != "" {
 		existing.Until = newData.Until
 	}
+	clearActualTemperatureInVacation(existing)
 	if newData.HVACMode != "" {
 		existing.HVACMode = newData.HVACMode
 	}
