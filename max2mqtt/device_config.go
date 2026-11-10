@@ -308,6 +308,7 @@ func sendConfigTemperatures(dstAddr string, cfg *DeviceConfig) {
 	payload[6] = byte(cfg.WindowOpenDuration / 5)
 
 	description := fmt.Sprintf("Config Temps (Comfort: %.1f, Eco: %.1f)", cfg.ComfortTemp, cfg.EcoTemp)
+	maybeWakeDevice(dstAddr)
 	sendCommand(dstAddr, 0x11, payload, description)
 }
 
@@ -325,6 +326,7 @@ func sendConfigValve(dstAddr string, v *ValveConfig) {
 	maxValve := byte(v.MaxValveSetting * 255 / 100)
 	offset := byte(v.ValveOffset * 255 / 100)
 	payload := []byte{boost, decalc, maxValve, offset}
+	maybeWakeDevice(dstAddr)
 	sendCommand(dstAddr, 0x12, payload, fmt.Sprintf("Config Valve (boost %dm %d%%)", v.BoostDuration, v.BoostValvePosition))
 }
 
@@ -337,10 +339,12 @@ func sendDisplayMode(dstAddr string, showActual bool) {
 	if showActual {
 		displayStr = "actual"
 	}
+	maybeWakeDevice(dstAddr)
 	sendCommand(dstAddr, 0x82, []byte{payload}, fmt.Sprintf("Set Display Mode: %s", displayStr))
 }
 
 func sendSetGroupID(dstAddr string, groupID int) {
+	maybeWakeDevice(dstAddr)
 	if groupID <= 0 {
 		sendCommand(dstAddr, 0x23, []byte{0x00}, "Remove Group ID")
 		return
@@ -349,6 +353,7 @@ func sendSetGroupID(dstAddr string, groupID int) {
 }
 
 func sendFactoryReset(dstAddr string) {
+	maybeWakeDevice(dstAddr)
 	sendCommand(dstAddr, 0xF0, []byte{}, "Factory Reset")
 }
 
@@ -359,6 +364,7 @@ func sendRemoveLinkPartner(srcDevice, partnerDevice string, partnerType byte) {
 		return
 	}
 	payload := append(partnerBytes, partnerType)
+	maybeWakeDevice(srcDevice)
 	sendCommand(srcDevice, 0x21, payload, fmt.Sprintf("Remove Link %s type %d", partnerDevice, partnerType))
 }
 

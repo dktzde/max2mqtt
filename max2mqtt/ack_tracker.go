@@ -51,6 +51,8 @@ var (
 	ackTracker     *AckTracker
 	lastSeenMu     sync.Mutex
 	lastSeenDevice = map[string]time.Time{}
+	// lastWakeUpQueued holds when a WakeUp was last queued per device (guarded by lastSeenMu)
+	lastWakeUpQueued = map[string]time.Time{}
 )
 
 func initAckTracker() {
@@ -67,11 +69,26 @@ func touchLastSeen(deviceID string) {
 	lastSeenMu.Unlock()
 }
 
+// wakeUpWindow is how long a device counts as awake after it was heard or after a WakeUp was queued
+const wakeUpWindow = 45 * time.Second
+
 func deviceNeedsWakeUp(deviceID string) bool {
 	lastSeenMu.Lock()
 	defer lastSeenMu.Unlock()
 	t, ok := lastSeenDevice[deviceID]
-	return !ok || time.Since(t) > 45*time.Second
+	return !ok || time.Since(t) > wakeUpWindow
+}
+
+// markWakeUpQueued records a WakeUp for the device and reports false when one was already queued
+// within wakeUpWindow, so the telegrams of one command get a single WakeUp in front of them.
+func markWakeUpQueued(deviceID string) bool {
+	lastSeenMu.Lock()
+	defer lastSeenMu.Unlock()
+	if t, ok := lastWakeUpQueued[deviceID]; ok && time.Since(t) <= wakeUpWindow {
+		return false
+	}
+	lastWakeUpQueued[deviceID] = time.Now()
+	return true
 }
 
 // TrackSetpoint remembers the expected climate state until an Ack arrives from the device.
