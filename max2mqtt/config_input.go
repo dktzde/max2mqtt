@@ -160,9 +160,7 @@ func applyConfigInput(msg mqtt.Message, send bool) {
 		sendConfigTemperatures(deviceID, &next.Temps)
 	}
 	if hasValve {
-		if hasTemps {
-			prev = next
-		}
+		// prev keeps the old valve values: a rollback restores only the kind of config it tracks
 		ackTracker.TrackConfig(deviceID, 0x12, "config_valve", prev, next)
 		sendConfigValve(deviceID, &next.Valve)
 	}
