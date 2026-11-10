@@ -1,12 +1,25 @@
 package main
 
 import (
+	"fmt"
 	"log/slog"
 	"sync"
 	"time"
 )
 
-const configAckTimeout = 30 * time.Second
+// configAckTimeout is the safety net for a config change whose telegram never reached the end of
+// its tries (normally ConfigUnacked rolls it back after the last try). It runs from the moment the
+// change is tracked, so it is added to the command timeout (credit wait) and must be longer than
+// the tries of all telegrams queued before it (each try waits up to bulkAckTimeout for the Ack).
+const configAckTimeout = 2 * time.Minute
+
+// configRollbackAfter returns when an unconfirmed config change is rolled back at the latest
+func configRollbackAfter() time.Duration {
+	if txMgr != nil {
+		return configAckTimeout + txMgr.Timeout
+	}
+	return configAckTimeout
+}
 
 // PendingConfigAck tracks an outstanding config TX until the device Acks (CUL push).
 type PendingConfigAck struct {
@@ -39,11 +52,56 @@ type PendingSetpoint struct {
 	// Counters holds the message counters of the SetTemperature telegrams sent for this setpoint
 	// (first try and retries). Only an Ack carrying one of them applies the setpoint.
 	Counters map[int]bool
+	// Previous is the climate state from before the first unacknowledged command (nil when the
+	// device was unknown); it is shown again when the device does not acknowledge the command.
+	Previous *climateSnapshot
+	// StatusSeen is set when the device reported its state while the command was pending; the
+	// state cache then holds the device's real state and Previous is not used.
+	StatusSeen bool
+	// Earlier holds the commands this one replaced while they were still unacknowledged, oldest
+	// first. An Ack for one of them (late, or a short Ack without state) makes the state after that
+	// command the new Previous.
+	Earlier []earlierSetpoint
+}
+
+// earlierSetpoint is a replaced pending command: its message counters and the state after it
+type earlierSetpoint struct {
+	Counters map[int]bool
+	After    *climateSnapshot
+}
+
+// climateSnapshot holds the climate fields a SetTemperature command changes optimistically
+type climateSnapshot struct {
+	Temperature         float64
+	Mode, HVACMode      string
+	PresetMode, Until   string
+	ModeBeforeBoost     string
+	SetpointBeforeBoost float64
+}
+
+func takeClimateSnapshot(deviceID string) *climateSnapshot {
+	stateMutex.RLock()
+	defer stateMutex.RUnlock()
+	d, ok := stateCache[deviceID]
+	if !ok {
+		return nil
+	}
+	return &climateSnapshot{
+		Temperature: d.Temperature, Mode: d.Mode, HVACMode: d.HVACMode,
+		PresetMode: d.PresetMode, Until: d.Until,
+		ModeBeforeBoost: d.ModeBeforeBoost, SetpointBeforeBoost: d.SetpointBeforeBoost,
+	}
+}
+
+func (c *climateSnapshot) applyTo(d *MaxDeviceData) {
+	d.Temperature, d.Mode, d.HVACMode = c.Temperature, c.Mode, c.HVACMode
+	d.PresetMode, d.Until = c.PresetMode, c.Until
+	d.ModeBeforeBoost, d.SetpointBeforeBoost = c.ModeBeforeBoost, c.SetpointBeforeBoost
 }
 
 type AckTracker struct {
 	mutex          sync.Mutex
-	pending        map[string]*PendingConfigAck // key: deviceID
+	pending        map[string]map[string]*PendingConfigAck // key: deviceID, then configKind
 	pendingSetTemp map[string]*PendingSetpoint
 }
 
@@ -51,11 +109,13 @@ var (
 	ackTracker     *AckTracker
 	lastSeenMu     sync.Mutex
 	lastSeenDevice = map[string]time.Time{}
+	// lastWakeUpQueued holds when a WakeUp was last queued per device (guarded by lastSeenMu)
+	lastWakeUpQueued = map[string]time.Time{}
 )
 
 func initAckTracker() {
 	ackTracker = &AckTracker{
-		pending:        make(map[string]*PendingConfigAck),
+		pending:        make(map[string]map[string]*PendingConfigAck),
 		pendingSetTemp: make(map[string]*PendingSetpoint),
 	}
 	slog.Info("AckTracker initialized", "timeout", configAckTimeout)
@@ -67,11 +127,35 @@ func touchLastSeen(deviceID string) {
 	lastSeenMu.Unlock()
 }
 
+// wakeUpWindow is how long a device counts as awake after it was heard or after a WakeUp was queued
+const wakeUpWindow = 45 * time.Second
+
 func deviceNeedsWakeUp(deviceID string) bool {
 	lastSeenMu.Lock()
 	defer lastSeenMu.Unlock()
 	t, ok := lastSeenDevice[deviceID]
-	return !ok || time.Since(t) > 45*time.Second
+	return !ok || time.Since(t) > wakeUpWindow
+}
+
+// clearWakeUpQueued forgets the queued WakeUp of a device after it was dropped without being sent,
+// so the next command queues a new one. (Should a newer WakeUp have been queued meanwhile, the
+// next command only sends one WakeUp too many.)
+func clearWakeUpQueued(deviceID string) {
+	lastSeenMu.Lock()
+	delete(lastWakeUpQueued, deviceID)
+	lastSeenMu.Unlock()
+}
+
+// markWakeUpQueued records a WakeUp for the device and reports false when one was already queued
+// within wakeUpWindow, so the telegrams of one command get a single WakeUp in front of them.
+func markWakeUpQueued(deviceID string) bool {
+	lastSeenMu.Lock()
+	defer lastSeenMu.Unlock()
+	if t, ok := lastWakeUpQueued[deviceID]; ok && time.Since(t) <= wakeUpWindow {
+		return false
+	}
+	lastWakeUpQueued[deviceID] = time.Now()
+	return true
 }
 
 // TrackSetpoint remembers the expected climate state until an Ack arrives from the device.
@@ -79,10 +163,77 @@ func (a *AckTracker) TrackSetpoint(deviceID string, temp float64, mode, hvacMode
 	if a == nil {
 		return
 	}
-	a.mutex.Lock()
-	a.pendingSetTemp[deviceID] = &PendingSetpoint{Temperature: temp, Mode: mode, HVACMode: hvacMode}
-	a.mutex.Unlock()
+	a.trackPending(deviceID, &PendingSetpoint{Temperature: temp, Mode: mode, HVACMode: hvacMode})
 	slog.Debug("Tracking pending SetTemperature", "device", deviceID, "temp", temp, "mode", mode, "hvac", hvacMode)
+}
+
+// trackPending stores a pending setpoint. Called before the command changes the state cache
+// optimistically, so the state from before the command can be shown again without an Ack. While
+// an earlier command is still unacknowledged, the state from before that one is kept.
+//
+// a.mutex is held while the snapshot is taken (lock order a.mutex, then stateMutex, as in
+// SetpointUnacked), so the rollback of an earlier command cannot run in between and leave its
+// optimistic state in the snapshot.
+func (a *AckTracker) trackPending(deviceID string, p *PendingSetpoint) {
+	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	now := takeClimateSnapshot(deviceID)
+	p.Previous = now
+	if old, ok := a.pendingSetTemp[deviceID]; ok && !old.StatusSeen {
+		// The cache now holds the optimistic state of the old command, i.e. the state after it
+		p.Previous = old.Previous
+		p.Earlier = append(append([]earlierSetpoint(nil), old.Earlier...), earlierSetpoint{Counters: old.Counters, After: now})
+	}
+	a.pendingSetTemp[deviceID] = p
+}
+
+// StatusReceived notes that the device reported its state (status message or Ack with state), so
+// a pending command that is not acknowledged later does not bring back the state from before it.
+func (a *AckTracker) StatusReceived(deviceID string) {
+	if a == nil {
+		return
+	}
+	a.mutex.Lock()
+	if p, ok := a.pendingSetTemp[deviceID]; ok {
+		p.StatusSeen = true
+	}
+	a.mutex.Unlock()
+}
+
+// SetpointUnacked is called when the device did not acknowledge the SetTemperature telegram with
+// message counter cnt after all tries. It forgets the pending setpoint and publishes the state from
+// before the command (or the last state the device reported since). Returns false when the
+// telegram does not belong to the pending setpoint (already acknowledged or replaced).
+func (a *AckTracker) SetpointUnacked(deviceID string, cnt int) bool {
+	if a == nil {
+		return false
+	}
+	// a.mutex stays held during the restore, so a new command cannot snapshot the failed state
+	// before it is replaced (see trackPending)
+	a.mutex.Lock()
+	p, ok := a.pendingSetTemp[deviceID]
+	if !ok || !p.Counters[cnt] {
+		a.mutex.Unlock()
+		return false
+	}
+	delete(a.pendingSetTemp, deviceID)
+	stateMutex.Lock()
+	existing, exists := stateCache[deviceID]
+	if !exists {
+		stateMutex.Unlock()
+		a.mutex.Unlock()
+		return true
+	}
+	if !p.StatusSeen && p.Previous != nil {
+		p.Previous.applyTo(existing)
+		updateHVACAction(existing)
+	}
+	pub := *existing
+	stateMutex.Unlock()
+	a.mutex.Unlock()
+	slog.Warn("SetTemperature not acknowledged; showing the device's last known state", "device", deviceID, "mode", pub.Mode, "temp", pub.Temperature)
+	publishState(deviceID, &pub)
+	return true
 }
 
 // TrackVacation remembers an expected vacation state (temperature until a date/time) until the device Acks.
@@ -90,9 +241,7 @@ func (a *AckTracker) TrackVacation(deviceID string, temp float64, until string) 
 	if a == nil {
 		return
 	}
-	a.mutex.Lock()
-	a.pendingSetTemp[deviceID] = &PendingSetpoint{Temperature: temp, Mode: "vacation", HVACMode: "off", Until: until}
-	a.mutex.Unlock()
+	a.trackPending(deviceID, &PendingSetpoint{Temperature: temp, Mode: "vacation", HVACMode: "off", Until: until})
 	slog.Debug("Tracking pending vacation", "device", deviceID, "temp", temp, "until", until)
 }
 
@@ -122,7 +271,7 @@ func (a *AckTracker) BindCounter(deviceID string, msgType byte, cnt int) {
 		}
 		return
 	}
-	if entry, ok := a.pending[deviceID]; ok && configMsgTypeMatches(entry.MsgType, msgType) {
+	if entry, ok := a.pending[deviceID][configKind(msgType)]; ok && configMsgTypeMatches(entry.MsgType, msgType) {
 		if entry.Counters == nil {
 			entry.Counters = map[int]bool{}
 		}
@@ -144,6 +293,17 @@ func (a *AckTracker) ApplySetpointAck(deviceID string, cnt int) bool {
 		return false
 	}
 	if !pending.Counters[cnt] {
+		for i, e := range pending.Earlier {
+			if e.Counters[cnt] {
+				// The device took a command that a newer one replaced: if the newer one is not
+				// acknowledged, show the state after this one, not the state before it
+				pending.Previous = e.After
+				pending.Earlier = pending.Earlier[i+1:]
+				a.mutex.Unlock()
+				slog.Debug("Ack for an earlier SetTemperature; it is the state to go back to now", "device", deviceID, "cnt", cnt)
+				return false
+			}
+		}
 		a.mutex.Unlock()
 		slog.Debug("Ack is not for the pending SetTemperature", "device", deviceID, "cnt", cnt)
 		return false
@@ -191,16 +351,58 @@ func (a *AckTracker) ApplySetpointAck(deviceID string, cnt int) bool {
 	return true
 }
 
+// configKind names the part of the device config a telegram type writes. Changes of different
+// kinds (config/set writes temperatures and valve) are tracked, acknowledged and rolled back
+// independently of each other.
+func configKind(msgType byte) string {
+	switch msgType {
+	case 0x11:
+		return "temperatures"
+	case 0x12:
+		return "valve"
+	case 0x22, 0x23:
+		return "group"
+	case 0x82:
+		return "display"
+	}
+	return fmt.Sprintf("type_%02x", msgType)
+}
+
+// pendingConfig returns the pending config changes of a device; the caller holds a.mutex
+func (a *AckTracker) pendingConfig(deviceID string) map[string]*PendingConfigAck {
+	m := a.pending[deviceID]
+	if m == nil {
+		m = map[string]*PendingConfigAck{}
+		a.pending[deviceID] = m
+	}
+	return m
+}
+
+// removePending removes entry if it is still the pending change of its kind; the caller holds
+// a.mutex. It reports false for an entry that was confirmed, rolled back or replaced meanwhile.
+func (a *AckTracker) removePending(entry *PendingConfigAck) bool {
+	m := a.pending[entry.DeviceID]
+	kind := configKind(entry.MsgType)
+	if m[kind] != entry {
+		return false
+	}
+	if entry.Timer != nil {
+		entry.Timer.Stop()
+	}
+	delete(m, kind)
+	if len(m) == 0 {
+		delete(a.pending, entry.DeviceID)
+	}
+	return true
+}
+
 // TrackConfig registers a pending config change. Optimistically applies Next and publishes.
 // On Ack from device, confirms; on timeout, restores Previous.
 func (a *AckTracker) TrackConfig(deviceID string, msgType byte, field string, prev, next DeviceConfigSnapshot) {
 	if a == nil {
 		return
 	}
-	a.mutex.Lock()
-	if old, ok := a.pending[deviceID]; ok && old.Timer != nil {
-		old.Timer.Stop()
-	}
+	kind := configKind(msgType)
 	entry := &PendingConfigAck{
 		DeviceID: deviceID,
 		MsgType:  msgType,
@@ -208,12 +410,18 @@ func (a *AckTracker) TrackConfig(deviceID string, msgType byte, field string, pr
 		Previous: prev,
 		Next:     next,
 	}
-	entry.Timer = time.AfterFunc(configAckTimeout, func() {
-		a.handleTimeout(deviceID)
+	a.mutex.Lock()
+	m := a.pendingConfig(deviceID)
+	if old, ok := m[kind]; ok && old.Timer != nil {
+		old.Timer.Stop()
+	}
+	entry.Timer = time.AfterFunc(configRollbackAfter(), func() {
+		a.rollbackConfig(entry, "Config Ack timeout; restoring previous values")
 	})
-	a.pending[deviceID] = entry
+	m[kind] = entry
 	a.mutex.Unlock()
 
+	setConfigStatus(deviceID, kind, field, statusPending)
 	applyConfigSnapshot(deviceID, next)
 	publishDeviceConfig(deviceID)
 	slog.Info("Config change pending Ack", "device", deviceID, "field", field, "type", msgType)
@@ -227,66 +435,122 @@ func (a *AckTracker) Confirm(deviceID string, cnt int) {
 		return
 	}
 	a.mutex.Lock()
-	entry, ok := a.pending[deviceID]
-	if !ok {
+	entry := a.pendingByCounter(deviceID, cnt)
+	if entry == nil {
 		a.mutex.Unlock()
-		slog.Debug("Ack Confirm: no pending config for device", "device", deviceID)
+		slog.Debug("Ack Confirm: no pending config for this message", "device", deviceID, "cnt", cnt)
 		return
 	}
-	if !entry.Counters[cnt] {
-		a.mutex.Unlock()
-		slog.Debug("Ack Confirm: Ack is for another message", "device", deviceID, "cnt", cnt, "field", entry.Field)
-		return
-	}
-	if entry.Timer != nil {
-		entry.Timer.Stop()
-	}
-	delete(a.pending, deviceID)
-	field := entry.Field
+	a.removePending(entry)
 	a.mutex.Unlock()
 
+	setConfigStatus(deviceID, configKind(entry.MsgType), entry.Field, statusAcknowledged)
 	// Authoritative publish after Ack (cache already has Next from optimistic apply)
 	publishDeviceConfig(deviceID)
-	slog.Info("Config Ack confirmed", "device", deviceID, "field", field)
+	slog.Info("Config Ack confirmed", "device", deviceID, "field", entry.Field)
 }
 
-func (a *AckTracker) handleTimeout(deviceID string) {
-	a.mutex.Lock()
-	entry, ok := a.pending[deviceID]
-	if !ok {
-		a.mutex.Unlock()
-		return
+// pendingByCounter returns the pending config change a telegram with message counter cnt was sent
+// for, or nil; the caller holds a.mutex
+func (a *AckTracker) pendingByCounter(deviceID string, cnt int) *PendingConfigAck {
+	for _, entry := range a.pending[deviceID] {
+		if entry.Counters[cnt] {
+			return entry
+		}
 	}
-	prev := entry.Previous
-	field := entry.Field
-	delete(a.pending, deviceID)
-	a.mutex.Unlock()
-
-	slog.Warn("Config Ack timeout; restoring previous values", "device", deviceID, "field", field)
-	applyConfigSnapshot(deviceID, prev)
-	publishDeviceConfig(deviceID)
+	return nil
 }
 
+// rollbackConfig restores the values from before a change that was not acknowledged, unless the
+// change was confirmed, rolled back or replaced meanwhile. Only the kind of config the change
+// wrote is restored, so a pending change of another kind keeps its values.
+func (a *AckTracker) rollbackConfig(entry *PendingConfigAck, msg string) bool {
+	a.mutex.Lock()
+	ok := a.removePending(entry)
+	a.mutex.Unlock()
+	if !ok {
+		return false
+	}
+	slog.Warn(msg, "device", entry.DeviceID, "field", entry.Field)
+	setConfigStatus(entry.DeviceID, configKind(entry.MsgType), entry.Field, statusNotAcknowledged)
+	applyConfigKind(entry.DeviceID, entry.Previous, entry.MsgType)
+	publishDeviceConfig(entry.DeviceID)
+	return true
+}
+
+// ConfigUnacked is called when the device did not acknowledge the config telegram with message
+// counter cnt after all tries: the previous values come back at once instead of after
+// configAckTimeout. Returns false when the telegram does not belong to a pending change.
+func (a *AckTracker) ConfigUnacked(deviceID string, cnt int) bool {
+	if a == nil {
+		return false
+	}
+	a.mutex.Lock()
+	entry := a.pendingByCounter(deviceID, cnt)
+	a.mutex.Unlock()
+	if entry == nil {
+		return false
+	}
+	return a.rollbackConfig(entry, "Config not acknowledged; restoring previous values")
+}
+
+// applyConfigKind restores the part of the config that a telegram of msgType writes
+func applyConfigKind(deviceID string, snap DeviceConfigSnapshot, msgType byte) {
+	cfg := getDeviceConfig(deviceID)
+	switch configKind(msgType) {
+	case "temperatures":
+		configMutex.Lock()
+		cfg.ComfortTemp, cfg.EcoTemp = snap.Temps.ComfortTemp, snap.Temps.EcoTemp
+		cfg.MaxTemp, cfg.MinTemp = snap.Temps.MaxTemp, snap.Temps.MinTemp
+		cfg.MeasurementOffset = snap.Temps.MeasurementOffset
+		cfg.WindowOpenTemp, cfg.WindowOpenDuration = snap.Temps.WindowOpenTemp, snap.Temps.WindowOpenDuration
+		cfg.TempsKnown = snap.Temps.TempsKnown
+		configMutex.Unlock()
+	case "valve":
+		valve := getValveConfig(deviceID)
+		valveMutex.Lock()
+		*valve = snap.Valve
+		valveMutex.Unlock()
+	case "group":
+		configMutex.Lock()
+		cfg.GroupID = snap.GroupID
+		configMutex.Unlock()
+	case "display":
+		configMutex.Lock()
+		cfg.DisplayMode = snap.Display
+		configMutex.Unlock()
+	default:
+		applyConfigSnapshot(deviceID, snap)
+	}
+}
+
+// applyConfigSnapshot writes the config values of a snapshot into the caches. The valve config is
+// guarded by valveMutex like everywhere else (publishDeviceConfig, attributes), not by configMutex.
 func applyConfigSnapshot(deviceID string, snap DeviceConfigSnapshot) {
 	cfg := getDeviceConfig(deviceID)
 	valve := getValveConfig(deviceID)
 	configMutex.Lock()
 	*cfg = snap.Temps
-	*valve = snap.Valve
 	cfg.DisplayMode = snap.Display
 	cfg.GroupID = snap.GroupID
 	configMutex.Unlock()
+	valveMutex.Lock()
+	*valve = snap.Valve
+	valveMutex.Unlock()
 }
 
 func snapshotDevice(deviceID string) DeviceConfigSnapshot {
 	cfg := getDeviceConfig(deviceID)
 	valve := getValveConfig(deviceID)
 	configMutex.RLock()
-	defer configMutex.RUnlock()
-	return DeviceConfigSnapshot{
+	snap := DeviceConfigSnapshot{
 		Temps:   *cfg,
-		Valve:   *valve,
 		Display: cfg.DisplayMode,
 		GroupID: cfg.GroupID,
 	}
+	configMutex.RUnlock()
+	valveMutex.RLock()
+	snap.Valve = *valve
+	valveMutex.RUnlock()
+	return snap
 }

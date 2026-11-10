@@ -65,6 +65,9 @@ func buildAttributes(deviceID string) map[string]interface{} {
 	if st := programmeStatusOf(deviceID); st != nil {
 		attrs["programme_status"] = st
 	}
+	if st := configStatusOf(deviceID); st != nil {
+		attrs["config_status"] = st
+	}
 	return attrs
 }
 

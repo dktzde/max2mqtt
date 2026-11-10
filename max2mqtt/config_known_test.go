@@ -47,6 +47,7 @@ func TestSingleConfigValueNeedsKnownValues(t *testing.T) {
 	if tx := pendingTX(); len(tx) != 0 {
 		t.Fatalf("import must not send: %v", tx)
 	}
+	touchLastSeen(dev) // device awake: no WakeUp in front of the config telegrams
 	handleMQTTEcoTemp(nil, fakeMessage{topic: "max/" + dev + "/eco_temp/set", payload: "13"})
 	tx := pendingTX()
 	// 0x11 payload: comfort 32, eco 26, max 61, min 09, offset 07, window 0E, duration 06

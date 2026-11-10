@@ -556,6 +556,9 @@ func handleSerialMessage(raw string) {
 }
 
 func updateDeviceState(srcAddr string, newData *MaxDeviceData) {
+	if newData.Mode != "" {
+		ackTracker.StatusReceived(srcAddr)
+	}
 	stateMutex.Lock()
 	existing, exists := stateCache[srcAddr]
 	if !exists {
@@ -1087,10 +1090,19 @@ func handleMQTTCommand(client mqtt.Client, msg mqtt.Message) {
 	}
 }
 
-// maybeWakeDevice sends WakeUp (0xF1) before commanding sleepy radiator valves.
+// maybeWakeDevice sends WakeUp (0xF1) before commanding sleepy radiator valves. Call it before
+// the first telegram of a command (setpoint, mode, config, links): a WakeUp queued after another
+// telegram reaches the device while it is still answering that one and is lost, and the next
+// telegram may go unanswered too (seen 2026-11-10: config, WakeUp, boost; only the config was
+// acknowledged).
 func maybeWakeDevice(dstAddr string) {
 	if !deviceNeedsWakeUp(dstAddr) {
 		slog.Debug("WakeUp skipped (device recently heard)", "dst", dstAddr)
+		return
+	}
+	if !markWakeUpQueued(dstAddr) {
+		// One command may consist of several telegrams (config temperatures and valve)
+		slog.Debug("WakeUp skipped (WakeUp already queued)", "dst", dstAddr)
 		return
 	}
 	slog.Info("Sending WakeUp before command (device quiet/unknown)", "dst", dstAddr)
@@ -1269,6 +1281,9 @@ func queueCommand(dstAddr string, typeByte byte, payload []byte, description str
 		descWithCnt := fmt.Sprintf("%s (Cnt:%d grp:%d)", description, cnt, groupID)
 		if bulk {
 			txMgr.EnqueueBulkAcked(dstAddr, cmd, descWithCnt, cnt, onAcked, onUnacked)
+		} else if tries := commandAckTries(dstAddr, typeByte); tries > 0 {
+			acked, unacked, dropped := commandAckCallbacks(dstAddr, typeByte, cnt, description, tries)
+			txMgr.EnqueueAcked(dstAddr, cmd, descWithCnt, cnt, tries, acked, unacked, dropped)
 		} else {
 			txMgr.Enqueue(dstAddr, cmd, descWithCnt)
 		}
@@ -1808,5 +1823,6 @@ func sendAddLinkPartner(srcDevice, partnerDevice string, partnerType byte) {
 	}
 
 	description := fmt.Sprintf("AddLinkPartner %s -> %s (%s)", srcDevice, partnerDevice, typeName)
+	maybeWakeDevice(srcDevice)
 	sendCommand(srcDevice, 0x20, payload, description)
 }
