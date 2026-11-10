@@ -67,18 +67,30 @@ The bridge automatically syncs time (Type `0x03`) with devices:
 The bridge adheres to 868MHz 1% transmission limits using CUL's credit system.
 -   Before each TX: queries CUL credits and queue status (`X` command).
 -   Only transmits if queue is below and credits are above configurable thresholds.
--   Commands are queued internally and processed sequentially. If a command cannot be sent (insufficient credits or CUL busy), it is immediately discarded without retry. The previous MQTT state is restored to sync Home Assistant with the actual device state.
+-   Commands are queued internally and processed sequentially. If a command cannot be sent (insufficient credits or CUL busy), it waits for credits until `command_timeout` (see "Waiting for duty cycle credits"); after that it is discarded and the previous MQTT state is restored to sync Home Assistant with the actual device state.
 
 ## Detailed Queue Behavior
 
 1. Command is dequeued from the channel
 2. Credits are checked via `X` command
-3. If credits < threshold or CUL queue busy → command is immediately discarded and state restored
+3. If credits < threshold or CUL queue busy → the command waits for credits (until `command_timeout`, then it is discarded and the state restored)
 4. Command is sent to the CUL (USB serial or TCP)
 5. LOVF check: If CUL returns "LOVF", log warning only and recommend to increase the credit threshold
-6. Done! The next RX from the device will confirm/correct state if needed
+6. Commands to a device wait for the device's Ack before the next message goes out, and are sent again without one (see below)
 
-Commands are "fire-and-forget" after passing the credit check. The system is self-correcting—any state mismatch (e.g., from a lost TX packet) is automatically fixed when the device next transmits its current state.
+### Waiting for the device's Ack
+
+A message to a device that the device answers with an Ack waits for that Ack (matched by the message counter, at most 5 s, usually about 2 s) before the next message is sent, to any device, and is sent again up to 3 times without one, like FHEM. This covers SetTemperature (setpoint, mode, presets including boost, vacation), ConfigTemperatures, ConfigValve, links, group ID, display mode and week profile messages. A WakeUp waits for its Ack too, but is not sent again (the next message has its own wakeup preamble). Broadcasts and time information do not wait.
+
+Why: a radiator thermostat misses a message that arrives while it is still answering the previous one, and it reports its state only when something changes, so a lost message could stay unnoticed for hours. Seen on 2026-11-10: a boost sent right after a config change was not acknowledged, and nothing sent it again.
+
+After the last try without an Ack:
+
+- a setpoint, mode or preset: Home Assistant shows the state from before the command again (or the state the device reported in the meantime);
+- a config change: the previous values come back at once (see `config_status` below);
+- the add-on shows the persistent notification `max2mqtt_command_unacked_<id>` in Home Assistant; it disappears after the next acknowledged command to that device.
+
+The WakeUp (`0xF1`) goes before the first message of a command (setpoint, config, links), once per command, unless the device was heard in the last 45 s.
 
 ## Set Temperature Verification
 
@@ -201,8 +213,19 @@ CUL delivers device Acks as soon as the thermostat answers. Flow:
 
 1. HA writes a config Number/Select (or climate preset)
 2. Bridge sends the radio command and optimistically updates retained MQTT state
-3. Device Ack (`0x02`) or status push confirms; bridge re-publishes authoritative state
-4. If no Ack within ~30s, previous values are restored
+3. Device Ack (`0x02`) with the message counter of the command confirms; bridge re-publishes authoritative state
+4. Without an Ack the message is sent again up to 3 times; after the last try (or at the latest after ~30 s) the previous values are restored
+
+**Was it acknowledged?** Config values are shown at once, before the device acknowledged them. The climate attribute `config_status` shows the state of the last change of each kind of config: `{"valve": {"state": "acknowledged", "field": "boost_duration", "at": "2026-11-10T06:23:39.898+01:00"}, "temperatures": {...}}`. Kinds: `temperatures` (`0x11`), `valve` (`0x12`), `group`, `display`. States: `pending` (sent, waiting for the Ack), `acknowledged`, `not_acknowledged` (previous values restored). To wait in Home Assistant until a change arrived, compare `at` (with milliseconds) with the time the change was sent (`sent_at: "{{ now().isoformat() }}"` right before sending), e.g. before starting a boost with a new boost valve position:
+
+```yaml
+- wait_template: >-
+    {% set s = (state_attr('climate.bedroom', 'config_status') or {}).get('valve', {}) %}
+    {{ s.get('state') in ['acknowledged', 'not_acknowledged'] and as_datetime(s.get('at')) >= as_datetime(sent_at) }}
+  timeout: "00:01:00"
+```
+
+The state is not kept across a restart of the add-on.
 
 There is no “query all config” over CUL: MAX! devices cannot be asked for their settings.
 
