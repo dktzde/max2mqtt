@@ -1,3 +1,13 @@
+## 1.7.0
+
+<sub>2026-11-10</sub>
+
+- **Commands wait for the device's Ack and are sent again without one:** setpoint, mode, presets (including boost), vacation, config, links, group ID and display mode messages now wait for the device's Ack (at most 5 s) before the next message goes out, and are sent again up to 3 times, like FHEM. Before, only week profile messages did this; a lost command stayed lost, and Home Assistant showed the new state until the device reported again. After the last try Home Assistant shows the state from before the command again, config values are restored at once, and a persistent notification `max2mqtt_command_unacked_<id>` appears (removed after the next acknowledged command to that device). Found on 2026-11-10: a boost sent right after a config change was not acknowledged and never sent again
+- **WakeUp first:** config, link, group and display messages now wake the device first like setpoints, once per command. Before, the WakeUp of the next command went out after a config message, while the device was answering it, and was lost
+- **New climate attribute `config_status`:** per kind of config (`temperatures`, `valve`, `group`, `display`) `pending`, `acknowledged` or `not_acknowledged`, the changed field and the time, so an automation can wait until the device really took a change (config values are shown at once, before the Ack)
+- **Config changes tracked per kind:** `config/set` with temperatures and valve values used to lose track of the temperature change (no confirmation, no rollback), and a rollback of the valve change restored nothing; a rollback now restores only the kind of config it belongs to
+- Not tested on a device yet
+
 ## 1.6.3
 
 <sub>2026-11-08</sub>
