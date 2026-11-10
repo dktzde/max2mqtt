@@ -21,25 +21,36 @@ type QueuedCommand struct {
 	// (setpoint, mode, config) go first. After bulkNotifyAfter Home Assistant
 	// shows a notification.
 	Bulk bool
-	// Cnt is the message counter of the telegram. A bulk command with Cnt > 0 waits for the
+	// Cnt is the message counter of the telegram. A command with Cnt > 0 waits for the
 	// device's Ack (see bulkAckTimeout) before the next telegram is sent, and is sent again
-	// up to bulkMaxTries times without one.
+	// up to MaxTries times without one.
 	Cnt int
-	// Tries counts how often a bulk command was sent
+	// MaxTries is how often a command with Cnt > 0 is sent without an Ack; 0 = bulkMaxTries
+	MaxTries int
+	// Tries counts how often the command was sent
 	Tries int
-	// OnAcked is called when the device acknowledged a bulk command
+	// OnAcked is called when the device acknowledged the command
 	OnAcked func()
-	// OnUnacked is called when a bulk command got no Ack after bulkMaxTries tries
+	// OnUnacked is called when the command got no Ack after MaxTries tries
 	OnUnacked func()
 }
 
-// bulkAckTimeout is the longest wait for the device's Ack of a week profile telegram. A radiator
-// thermostat answers about 2 s after the CUL got the telegram (the CUL sends a 1 s wakeup
-// preamble first); a telegram sent to the device before that is lost. FHEM waits for the Ack
-// (3 s timeout) before it sends the next packet to the same device.
+// maxTries returns how often the command is sent without an Ack
+func (c *QueuedCommand) maxTries() int {
+	if c.MaxTries > 0 {
+		return c.MaxTries
+	}
+	return bulkMaxTries
+}
+
+// bulkAckTimeout is the longest wait for the device's Ack of a telegram (week profile and
+// commands to a device, see EnqueueAcked). A radiator thermostat answers about 2 s after the CUL
+// got the telegram (the CUL sends a 1 s wakeup preamble first); a telegram sent to the device
+// before that is lost. FHEM waits for the Ack (3 s timeout) before it sends the next packet to the
+// same device.
 var bulkAckTimeout = 5 * time.Second
 
-// bulkMaxTries is how often a week profile telegram is sent without an Ack before giving up
+// bulkMaxTries is how often a telegram is sent without an Ack before giving up
 var bulkMaxTries = 3
 
 // ackWait is the Ack the dispatcher waits for after a bulk telegram
@@ -57,10 +68,10 @@ var creditRetryInterval = 15 * time.Second
 // It manages the Regulatory Duty Cycle (via CUL Credits), ensuring we don't exceed
 // the 1% airtime limit. Commands are dispatched when credits are available.
 //
-// Note: normal commands do NOT wait for ACKs. The MAX! system is self-correcting—the next RX
-// packet from a device will contain its actual state, automatically fixing any
-// discrepancy if a TX was lost. Week profile telegrams are different: the device's state does
-// not show them, so each one waits for the device's Ack and is sent again without one.
+// Telegrams to a device that it answers with an Ack (setpoint, mode, config, links, week profile)
+// wait for that Ack before the next telegram goes out and are sent again without one, like FHEM.
+// A lost setpoint would otherwise stay lost: a radiator thermostat reports its state only when
+// something changes, and the bridge shows the optimistic state until then.
 type TransmissionManager struct {
 	// Duty Cycle State
 	CurrentCredits int
@@ -151,6 +162,22 @@ func (t *TransmissionManager) Enqueue(devicedID, payload, description string) {
 	})
 }
 
+// EnqueueAcked adds a command to a device that waits for the device's Ack (message counter cnt)
+// before the next telegram goes out, and is sent again up to maxTries times (0 = bulkMaxTries)
+// without one. onAcked is called after the Ack, onUnacked after the last try; both may be nil.
+func (t *TransmissionManager) EnqueueAcked(devicedID, payload, description string, cnt, maxTries int, onAcked, onUnacked func()) {
+	t.enqueue(QueuedCommand{
+		Payload:     payload,
+		Description: description,
+		DeviceID:    devicedID,
+		CreatedAt:   time.Now(),
+		Cnt:         cnt,
+		MaxTries:    maxTries,
+		OnAcked:     onAcked,
+		OnUnacked:   onUnacked,
+	})
+}
+
 // EnqueueBulk adds a command of a long transfer (week profile), see QueuedCommand.Bulk.
 // It does not wait for an Ack; use EnqueueBulkAcked for telegrams to a device.
 func (t *TransmissionManager) EnqueueBulk(devicedID, payload, description string) {
@@ -224,25 +251,34 @@ func (t *TransmissionManager) awaitAck() bool {
 // finishBulk is called after a bulk command was sent. It waits for the device's Ack when the
 // command has a message counter and returns false when the command has to be sent again.
 func (t *TransmissionManager) finishBulk(cmd *QueuedCommand) bool {
-	if cmd.Cnt == 0 {
-		t.bulkWait.done(*cmd)
-		return true
+	if cmd.Cnt > 0 && !t.finishAcked(cmd) {
+		return false
 	}
+	t.bulkWait.done(*cmd)
+	return true
+}
+
+// finishAcked is called after a command with a message counter was sent. It waits for the
+// device's Ack and returns false when the command has to be sent again, true when it is done
+// (acknowledged, or not acknowledged after the last try).
+func (t *TransmissionManager) finishAcked(cmd *QueuedCommand) bool {
 	cmd.Tries++
 	if t.awaitAck() {
-		slog.Debug("TxMgr: Week profile message acknowledged", "device", cmd.DeviceID, "desc", cmd.Description, "tries", cmd.Tries)
-		t.bulkWait.done(*cmd)
+		slog.Debug("TxMgr: Command acknowledged", "device", cmd.DeviceID, "desc", cmd.Description, "tries", cmd.Tries)
 		if cmd.OnAcked != nil {
 			cmd.OnAcked()
 		}
 		return true
 	}
-	if cmd.Tries < bulkMaxTries {
-		slog.Warn("TxMgr: No Ack for week profile message, sending it again", "device", cmd.DeviceID, "desc", cmd.Description, "try", cmd.Tries+1, "of", bulkMaxTries)
+	if cmd.Tries < cmd.maxTries() {
+		slog.Warn("TxMgr: No Ack, sending again", "device", cmd.DeviceID, "desc", cmd.Description, "try", cmd.Tries+1, "of", cmd.maxTries())
 		return false
 	}
-	slog.Error("TxMgr: Week profile message not acknowledged, giving up", "device", cmd.DeviceID, "desc", cmd.Description, "tries", cmd.Tries)
-	t.bulkWait.done(*cmd)
+	if cmd.maxTries() > 1 {
+		slog.Error("TxMgr: Not acknowledged by the device, giving up", "device", cmd.DeviceID, "desc", cmd.Description, "tries", cmd.Tries)
+	} else {
+		slog.Info("TxMgr: No Ack", "device", cmd.DeviceID, "desc", cmd.Description)
+	}
 	if cmd.OnUnacked != nil {
 		cmd.OnUnacked()
 	}
@@ -316,7 +352,7 @@ func (t *TransmissionManager) dispatcherLoop() {
 		if bulk.Cnt > 0 {
 			t.expectAck(*bulk)
 		}
-		if t.tryDispatch(*bulk) {
+		if done, _ := t.tryDispatch(*bulk); done {
 			if t.finishBulk(bulk) {
 				bulk = nil
 			}
@@ -332,11 +368,27 @@ func (t *TransmissionManager) dispatcherLoop() {
 }
 
 // processCommand sends a normal command, waiting for duty cycle credits until its timeout.
+// A command with a message counter then waits for the device's Ack and is sent again without one.
 func (t *TransmissionManager) processCommand(cmd QueuedCommand) {
-	for !t.tryDispatch(cmd) {
-		select {
-		case <-time.After(creditRetryInterval):
-		case <-t.stop:
+	for {
+		if cmd.Cnt > 0 {
+			t.expectAck(cmd)
+		}
+		done, sent := t.tryDispatch(cmd)
+		if !done {
+			t.clearAck()
+			select {
+			case <-time.After(creditRetryInterval):
+				continue
+			case <-t.stop:
+				return
+			}
+		}
+		if !sent {
+			t.clearAck()
+			return
+		}
+		if cmd.Cnt == 0 || t.finishAcked(&cmd) {
 			return
 		}
 	}
@@ -363,14 +415,14 @@ func (t *TransmissionManager) deadline(cmd QueuedCommand) time.Time {
 }
 
 // tryDispatch sends the command if the CUL has credits and queue space.
-// Returns true when the command is done (sent, or dropped after its timeout),
-// false when it has to wait for credits.
-func (t *TransmissionManager) tryDispatch(cmd QueuedCommand) bool {
+// done is true when the command is done (sent, or dropped after its timeout) and false when it
+// has to wait for credits; sent tells whether it went to the CUL.
+func (t *TransmissionManager) tryDispatch(cmd QueuedCommand) (done, sent bool) {
 	// 1. Check Timeout before even querying (bulk commands wait without limit)
 	if !cmd.Bulk && time.Now().After(t.deadline(cmd)) {
 		slog.Warn("Command timed out due to duty cycle limits. Restoring state.", "device", cmd.DeviceID, "desc", cmd.Description, "wait", time.Since(cmd.CreatedAt))
 		t.maybeRestoreState(cmd.DeviceID)
-		return true
+		return true, false
 	}
 
 	// 2. Query credits and wait for response
@@ -388,7 +440,7 @@ func (t *TransmissionManager) tryDispatch(cmd QueuedCommand) bool {
 	if queueLen >= t.MaxQueue {
 		slog.Warn("TxMgr: CUL queue too busy. Waiting.", "queue", queueLen, "limit", t.MaxQueue, "device", cmd.DeviceID, "desc", cmd.Description)
 		t.bulkWaiting(cmd)
-		return false
+		return false, false
 	}
 
 	if ok && credits < t.minCredits(cmd) {
@@ -398,13 +450,13 @@ func (t *TransmissionManager) tryDispatch(cmd QueuedCommand) bool {
 			slog.Warn("TxMgr: Insufficient credits. Waiting.", "credits", credits, "min", t.MinCredits, "device", cmd.DeviceID, "desc", cmd.Description, "until", t.deadline(cmd).Format(time.TimeOnly))
 		}
 		t.bulkWaiting(cmd)
-		return false
+		return false, false
 	}
 
 	// Brief pause after credit query so TCP/serial bridges finish the X reply before Zs
 	time.Sleep(50 * time.Millisecond)
 	t.dispatchToSerial(cmd, credits, queueLen)
-	return true
+	return true, true
 }
 
 // bulkWaiting raises the Home Assistant notification for a bulk command that waits too long

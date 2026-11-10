@@ -556,6 +556,9 @@ func handleSerialMessage(raw string) {
 }
 
 func updateDeviceState(srcAddr string, newData *MaxDeviceData) {
+	if newData.Mode != "" {
+		ackTracker.StatusReceived(srcAddr)
+	}
 	stateMutex.Lock()
 	existing, exists := stateCache[srcAddr]
 	if !exists {
@@ -1278,6 +1281,9 @@ func queueCommand(dstAddr string, typeByte byte, payload []byte, description str
 		descWithCnt := fmt.Sprintf("%s (Cnt:%d grp:%d)", description, cnt, groupID)
 		if bulk {
 			txMgr.EnqueueBulkAcked(dstAddr, cmd, descWithCnt, cnt, onAcked, onUnacked)
+		} else if tries := commandAckTries(dstAddr, typeByte); tries > 0 {
+			acked, unacked := commandAckCallbacks(dstAddr, typeByte, cnt, description, tries)
+			txMgr.EnqueueAcked(dstAddr, cmd, descWithCnt, cnt, tries, acked, unacked)
 		} else {
 			txMgr.Enqueue(dstAddr, cmd, descWithCnt)
 		}
