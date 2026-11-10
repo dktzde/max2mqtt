@@ -50,7 +50,7 @@ var (
 func commandAckCallbacks(deviceID string, typeByte byte, cnt int, description string, tries int) (acked, unacked, dropped func()) {
 	acked = func() { commandAcked(deviceID) }
 	if typeByte == 0xF1 {
-		return acked, nil, nil
+		return acked, nil, func() { clearWakeUpQueued(deviceID) }
 	}
 	undo := func() {
 		switch typeByte {
@@ -67,7 +67,7 @@ func commandAckCallbacks(deviceID string, typeByte byte, cnt int, description st
 	}
 	dropped = func() {
 		undo()
-		commandUnacked(deviceID, fmt.Sprintf("did not get \"%s\": it was not sent, the duty cycle credits did not suffice within command_timeout", description))
+		commandUnacked(deviceID, fmt.Sprintf("did not get \"%s\": it was not sent (no duty cycle credits within command_timeout, or the CUL connection was not ready)", description))
 	}
 	return acked, unacked, dropped
 }

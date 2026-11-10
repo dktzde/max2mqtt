@@ -58,6 +58,16 @@ type PendingSetpoint struct {
 	// StatusSeen is set when the device reported its state while the command was pending; the
 	// state cache then holds the device's real state and Previous is not used.
 	StatusSeen bool
+	// Earlier holds the commands this one replaced while they were still unacknowledged, oldest
+	// first. An Ack for one of them (late, or a short Ack without state) makes the state after that
+	// command the new Previous.
+	Earlier []earlierSetpoint
+}
+
+// earlierSetpoint is a replaced pending command: its message counters and the state after it
+type earlierSetpoint struct {
+	Counters map[int]bool
+	After    *climateSnapshot
 }
 
 // climateSnapshot holds the climate fields a SetTemperature command changes optimistically
@@ -127,6 +137,15 @@ func deviceNeedsWakeUp(deviceID string) bool {
 	return !ok || time.Since(t) > wakeUpWindow
 }
 
+// clearWakeUpQueued forgets the queued WakeUp of a device after it was dropped without being sent,
+// so the next command queues a new one. (Should a newer WakeUp have been queued meanwhile, the
+// next command only sends one WakeUp too many.)
+func clearWakeUpQueued(deviceID string) {
+	lastSeenMu.Lock()
+	delete(lastWakeUpQueued, deviceID)
+	lastSeenMu.Unlock()
+}
+
 // markWakeUpQueued records a WakeUp for the device and reports false when one was already queued
 // within wakeUpWindow, so the telegrams of one command get a single WakeUp in front of them.
 func markWakeUpQueued(deviceID string) bool {
@@ -151,14 +170,21 @@ func (a *AckTracker) TrackSetpoint(deviceID string, temp float64, mode, hvacMode
 // trackPending stores a pending setpoint. Called before the command changes the state cache
 // optimistically, so the state from before the command can be shown again without an Ack. While
 // an earlier command is still unacknowledged, the state from before that one is kept.
+//
+// a.mutex is held while the snapshot is taken (lock order a.mutex, then stateMutex, as in
+// SetpointUnacked), so the rollback of an earlier command cannot run in between and leave its
+// optimistic state in the snapshot.
 func (a *AckTracker) trackPending(deviceID string, p *PendingSetpoint) {
-	p.Previous = takeClimateSnapshot(deviceID)
 	a.mutex.Lock()
+	defer a.mutex.Unlock()
+	now := takeClimateSnapshot(deviceID)
+	p.Previous = now
 	if old, ok := a.pendingSetTemp[deviceID]; ok && !old.StatusSeen {
+		// The cache now holds the optimistic state of the old command, i.e. the state after it
 		p.Previous = old.Previous
+		p.Earlier = append(append([]earlierSetpoint(nil), old.Earlier...), earlierSetpoint{Counters: old.Counters, After: now})
 	}
 	a.pendingSetTemp[deviceID] = p
-	a.mutex.Unlock()
 }
 
 // StatusReceived notes that the device reported its state (status message or Ack with state), so
@@ -182,6 +208,8 @@ func (a *AckTracker) SetpointUnacked(deviceID string, cnt int) bool {
 	if a == nil {
 		return false
 	}
+	// a.mutex stays held during the restore, so a new command cannot snapshot the failed state
+	// before it is replaced (see trackPending)
 	a.mutex.Lock()
 	p, ok := a.pendingSetTemp[deviceID]
 	if !ok || !p.Counters[cnt] {
@@ -189,12 +217,11 @@ func (a *AckTracker) SetpointUnacked(deviceID string, cnt int) bool {
 		return false
 	}
 	delete(a.pendingSetTemp, deviceID)
-	a.mutex.Unlock()
-
 	stateMutex.Lock()
 	existing, exists := stateCache[deviceID]
 	if !exists {
 		stateMutex.Unlock()
+		a.mutex.Unlock()
 		return true
 	}
 	if !p.StatusSeen && p.Previous != nil {
@@ -203,6 +230,7 @@ func (a *AckTracker) SetpointUnacked(deviceID string, cnt int) bool {
 	}
 	pub := *existing
 	stateMutex.Unlock()
+	a.mutex.Unlock()
 	slog.Warn("SetTemperature not acknowledged; showing the device's last known state", "device", deviceID, "mode", pub.Mode, "temp", pub.Temperature)
 	publishState(deviceID, &pub)
 	return true
@@ -265,6 +293,17 @@ func (a *AckTracker) ApplySetpointAck(deviceID string, cnt int) bool {
 		return false
 	}
 	if !pending.Counters[cnt] {
+		for i, e := range pending.Earlier {
+			if e.Counters[cnt] {
+				// The device took a command that a newer one replaced: if the newer one is not
+				// acknowledged, show the state after this one, not the state before it
+				pending.Previous = e.After
+				pending.Earlier = pending.Earlier[i+1:]
+				a.mutex.Unlock()
+				slog.Debug("Ack for an earlier SetTemperature; it is the state to go back to now", "device", deviceID, "cnt", cnt)
+				return false
+			}
+		}
 		a.mutex.Unlock()
 		slog.Debug("Ack is not for the pending SetTemperature", "device", deviceID, "cnt", cnt)
 		return false

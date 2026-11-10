@@ -292,3 +292,76 @@ func TestDroppedBoostRestoresPreviousState(t *testing.T) {
 		t.Fatalf("optimistic boost still shown after the command was dropped: %s", st)
 	}
 }
+
+// A try after the first one that cannot be sent (credit timeout) ends like an unacknowledged
+// command: it was sent before without an Ack
+func TestRetryDroppedAfterSentTryCountsAsUnacked(t *testing.T) {
+	setBulkAck(t, 60*time.Millisecond, 3)
+	credits, sent, start := startTxTest(t, 300*time.Millisecond)
+	credits.Store(900)
+	var unacked, dropped atomic.Int32
+	txMgr.EnqueueAcked(cmdAckDevice, "ZsBOOST", "boost", 51, 3, nil, func() { unacked.Add(1) }, func() { dropped.Add(1) })
+	start()
+
+	expectSent(t, sent, "ZsBOOST")
+	credits.Store(100) // the retry waits for credits until the command times out
+	deadline := time.Now().Add(2 * time.Second)
+	for unacked.Load()+dropped.Load() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("no failure callback after the retry was dropped")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if unacked.Load() != 1 || dropped.Load() != 0 {
+		t.Fatalf("onUnacked %d, onDropped %d times, want 1 and 0", unacked.Load(), dropped.Load())
+	}
+}
+
+func TestFullSerialQueueIsNotASentTry(t *testing.T) {
+	resetTestState()
+	serialWrite = make(chan string) // nobody reads: the channel is full
+	mgr := &TransmissionManager{}
+	if mgr.dispatchToSerial(QueuedCommand{DeviceID: cmdAckDevice, Payload: "ZsBOOST"}, 900, 0) {
+		t.Fatal("a command the serial queue did not take counted as sent")
+	}
+}
+
+func TestDroppedWakeUpDoesNotSuppressTheNextOne(t *testing.T) {
+	resetWakeUpState(t)
+	if !markWakeUpQueued(cmdAckDevice) {
+		t.Fatal("first WakeUp suppressed")
+	}
+	_, _, dropped := commandAckCallbacks(cmdAckDevice, 0xF1, 1, "WakeUp", 1)
+	dropped()
+	if !markWakeUpQueued(cmdAckDevice) {
+		t.Fatal("the WakeUp after a dropped one was suppressed")
+	}
+}
+
+// Boost acknowledged late, after a newer setpoint replaced it: when the newer one fails, the
+// device is in boost, not in the state from before the boost
+func TestAckOfReplacedCommandBecomesRollbackState(t *testing.T) {
+	fc := resetTestState()
+	resetWakeUpState(t)
+	initAckTracker()
+	touchLastSeen(cmdAckDevice)
+	stateMutex.Lock()
+	stateCache[cmdAckDevice] = &MaxDeviceData{Temperature: 13, Mode: "auto", HVACMode: "auto", PresetMode: "none"}
+	stateMutex.Unlock()
+
+	handleMQTTPresetCommand(nil, fakeMessage{topic: "max/" + cmdAckDevice + "/preset/set", payload: "boost"})
+	boostCnt := cmdCounter(t, pendingTX()[0])
+	handleMQTTCommand(nil, fakeMessage{topic: "max/" + cmdAckDevice + "/set", payload: "20"})
+	setCnt := cmdCounter(t, pendingTX()[0])
+
+	if ackTracker.ApplySetpointAck(cmdAckDevice, boostCnt) {
+		t.Fatal("the Ack of the replaced boost applied a setpoint")
+	}
+	if !ackTracker.SetpointUnacked(cmdAckDevice, setCnt) {
+		t.Fatal("the newer setpoint was not pending")
+	}
+	st := fc.get("max/" + cmdAckDevice + "/state")
+	if !strings.Contains(st, `"mode":"boost"`) || !strings.Contains(st, `"preset_mode":"boost"`) {
+		t.Fatalf("after the failed setpoint the acknowledged boost should be shown: %s", st)
+	}
+}

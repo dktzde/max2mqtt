@@ -33,8 +33,9 @@ type QueuedCommand struct {
 	OnAcked func()
 	// OnUnacked is called when the command got no Ack after MaxTries tries
 	OnUnacked func()
-	// OnDropped is called when a command with Cnt > 0 was dropped without being sent
-	// (no duty cycle credits until its timeout)
+	// OnDropped is called when a command with Cnt > 0 was dropped before its first try was sent
+	// (no duty cycle credits until its timeout, or the serial queue was full); a command dropped
+	// before a later try calls OnUnacked, as it was sent before without an Ack
 	OnDropped func()
 }
 
@@ -357,7 +358,8 @@ func (t *TransmissionManager) dispatcherLoop() {
 		if bulk.Cnt > 0 {
 			t.expectAck(*bulk)
 		}
-		if done, _ := t.tryDispatch(*bulk); done {
+		// A bulk command not taken by the serial queue (done but not sent) is tried again later
+		if done, sent := t.tryDispatch(*bulk); done && sent {
 			if t.finishBulk(bulk) {
 				bulk = nil
 			}
@@ -391,14 +393,30 @@ func (t *TransmissionManager) processCommand(cmd QueuedCommand) {
 		}
 		if !sent {
 			t.clearAck()
-			if cmd.Cnt > 0 && cmd.Tries == 0 && cmd.OnDropped != nil {
-				cmd.OnDropped()
+			if cmd.Cnt > 0 {
+				t.commandDropped(cmd)
 			}
 			return
 		}
 		if cmd.Cnt == 0 || t.finishAcked(&cmd) {
 			return
 		}
+	}
+}
+
+// commandDropped runs the failure callback of a command with a message counter that was dropped
+// without being sent: OnDropped before the first try, OnUnacked when earlier tries went out
+// without an Ack (the command was sent, but not acknowledged).
+func (t *TransmissionManager) commandDropped(cmd QueuedCommand) {
+	if cmd.Tries == 0 {
+		if cmd.OnDropped != nil {
+			cmd.OnDropped()
+		}
+		return
+	}
+	slog.Error("TxMgr: Not acknowledged by the device and the next try could not be sent, giving up", "device", cmd.DeviceID, "desc", cmd.Description, "tries", cmd.Tries)
+	if cmd.OnUnacked != nil {
+		cmd.OnUnacked()
 	}
 }
 
@@ -463,7 +481,9 @@ func (t *TransmissionManager) tryDispatch(cmd QueuedCommand) (done, sent bool) {
 
 	// Brief pause after credit query so TCP/serial bridges finish the X reply before Zs
 	time.Sleep(50 * time.Millisecond)
-	t.dispatchToSerial(cmd, credits, queueLen)
+	if !t.dispatchToSerial(cmd, credits, queueLen) {
+		return true, false
+	}
 	return true, true
 }
 
@@ -505,14 +525,17 @@ func (t *TransmissionManager) queryCreditStatus() (credits int, queueLen int, ok
 	return credits, queueLen, true
 }
 
-// dispatchToSerial sends the command payload to the serial channel.
-func (t *TransmissionManager) dispatchToSerial(cmd QueuedCommand, credits, queueLen int) {
+// dispatchToSerial sends the command payload to the serial channel and reports whether the
+// channel took it.
+func (t *TransmissionManager) dispatchToSerial(cmd QueuedCommand, credits, queueLen int) bool {
 	select {
 
 	case serialWrite <- cmd.Payload:
 		slog.Info("TxMgr: TX dispatched", "device", cmd.DeviceID, "desc", cmd.Description, "credits", credits, "queue", queueLen)
+		return true
 	default:
 		slog.Error("TxMgr: Serial write channel full! Dropping command", "device", cmd.DeviceID)
+		return false
 	}
 }
 
