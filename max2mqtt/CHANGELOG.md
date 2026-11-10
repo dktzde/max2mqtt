@@ -6,6 +6,7 @@
 - **WakeUp first:** config, link, group and display messages now wake the device first like setpoints, once per command. Before, the WakeUp of the next command went out after a config message, while the device was answering it, and was lost
 - **New climate attribute `config_status`:** per kind of config (`temperatures`, `valve`, `group`, `display`) `pending`, `acknowledged` or `not_acknowledged`, the changed field and the time, so an automation can wait until the device really took a change (config values are shown at once, before the Ack)
 - **Config changes tracked per kind:** `config/set` with temperatures and valve values used to lose track of the temperature change (no confirmation, no rollback), and a rollback of the valve change restored nothing; a rollback now restores only the kind of config it belongs to
+- **Note:** commands to several thermostats in a row now take a little longer, because each one waits up to 5 s for its Ack (usually about 2 s) before the next goes out
 - Not tested on a device yet
 
 ## 1.6.3
