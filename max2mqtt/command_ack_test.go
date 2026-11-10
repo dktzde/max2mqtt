@@ -56,7 +56,7 @@ func TestCommandWaitsForAckBeforeNextTelegram(t *testing.T) {
 	setBulkAck(t, 2*time.Second, 3)
 	credits, sent, start := startTxTest(t, time.Minute)
 	credits.Store(900)
-	txMgr.EnqueueAcked(cmdAckDevice, "ZsCONFIG", "config valve", 11, 3, nil, nil)
+	txMgr.EnqueueAcked(cmdAckDevice, "ZsCONFIG", "config valve", 11, 3, nil, nil, nil)
 	txMgr.Enqueue(cmdAckDevice, "ZsBOOST", "boost")
 	start()
 
@@ -76,7 +76,7 @@ func TestCommandSentAgainWithoutAck(t *testing.T) {
 	credits, sent, start := startTxTest(t, time.Minute)
 	credits.Store(900)
 	var acked, unacked atomic.Int32
-	txMgr.EnqueueAcked(cmdAckDevice, "ZsBOOST", "boost", 21, 3, func() { acked.Add(1) }, func() { unacked.Add(1) })
+	txMgr.EnqueueAcked(cmdAckDevice, "ZsBOOST", "boost", 21, 3, func() { acked.Add(1) }, func() { unacked.Add(1) }, nil)
 	txMgr.Enqueue(cmdAckDevice, "ZsNEXT", "next")
 	start()
 
@@ -94,7 +94,7 @@ func TestCommandRetryStopsAfterAck(t *testing.T) {
 	credits, sent, start := startTxTest(t, time.Minute)
 	credits.Store(900)
 	var acked, unacked atomic.Int32
-	txMgr.EnqueueAcked(cmdAckDevice, "ZsBOOST", "boost", 31, 3, func() { acked.Add(1) }, func() { unacked.Add(1) })
+	txMgr.EnqueueAcked(cmdAckDevice, "ZsBOOST", "boost", 31, 3, func() { acked.Add(1) }, func() { unacked.Add(1) }, nil)
 	start()
 
 	expectSent(t, sent, "ZsBOOST")
@@ -110,7 +110,7 @@ func TestWakeUpIsNotSentAgain(t *testing.T) {
 	setBulkAck(t, 60*time.Millisecond, 3)
 	credits, sent, start := startTxTest(t, time.Minute)
 	credits.Store(900)
-	txMgr.EnqueueAcked(cmdAckDevice, "ZsWAKE", "WakeUp", 41, 1, nil, nil)
+	txMgr.EnqueueAcked(cmdAckDevice, "ZsWAKE", "WakeUp", 41, 1, nil, nil, nil)
 	txMgr.Enqueue(cmdAckDevice, "ZsNEXT", "next")
 	start()
 
@@ -184,7 +184,7 @@ func TestBoostAcknowledgedOnRetryDismissesNotification(t *testing.T) {
 	stateMutex.Lock()
 	stateCache[cmdAckDevice] = &MaxDeviceData{Temperature: 13, Mode: "auto", HVACMode: "auto", PresetMode: "none"}
 	stateMutex.Unlock()
-	commandUnacked(cmdAckDevice, "Set Preset boost", 3) // an earlier command got lost
+	commandUnacked(cmdAckDevice, "did not acknowledge \"Set Preset boost\" after 3 tries") // an earlier command got lost
 
 	handleMQTTPresetCommand(nil, fakeMessage{topic: "max/" + cmdAckDevice + "/preset/set", payload: "boost"})
 	receive(t, sent)
@@ -237,4 +237,58 @@ func boostDurationOf(deviceID string) int {
 	valveMutex.RLock()
 	defer valveMutex.RUnlock()
 	return v.BoostDuration
+}
+
+func displayModeOf(deviceID string) string {
+	cfg := getDeviceConfig(deviceID)
+	configMutex.RLock()
+	defer configMutex.RUnlock()
+	return cfg.DisplayMode
+}
+
+func TestUnacknowledgedDisplayModeRestoredAtOnce(t *testing.T) {
+	fc, sent, rec := startCommandTest(t, 60*time.Millisecond)
+	before := displayModeOf(cmdAckDevice)
+
+	handleMQTTDisplayMode(nil, fakeMessage{topic: "max/" + cmdAckDevice + "/display_mode/set", payload: "Actual"})
+	if displayModeOf(cmdAckDevice) != "Actual" {
+		t.Fatal("display mode not applied optimistically")
+	}
+	for i := 0; i < 3; i++ {
+		receive(t, sent)
+	}
+	waitForNotification(t, rec, "notify:"+commandUnackedID(cmdAckDevice))
+	if got := displayModeOf(cmdAckDevice); got != before {
+		t.Fatalf("display mode %q after the last try, want the previous %q", got, before)
+	}
+	if st := configStatusAttr(t, fc, cmdAckDevice); st["display"].State != statusNotAcknowledged {
+		t.Fatalf("display status %+v", st["display"])
+	}
+}
+
+// A setpoint dropped for lack of credits was never sent: the state from before it comes back
+func TestDroppedBoostRestoresPreviousState(t *testing.T) {
+	setBulkAck(t, 60*time.Millisecond, 3)
+	rec := recordNotifications(t, time.Hour)
+	credits, sent, start := startTxTest(t, 100*time.Millisecond)
+	credits.Store(100) // below MinCredits: the command waits, then is dropped
+	resetWakeUpState(t)
+	initAckTracker()
+	commandUnackedMu.Lock()
+	commandUnackedNotified = map[string]bool{}
+	commandUnackedMu.Unlock()
+	touchLastSeen(cmdAckDevice)
+	fc := mqttClient.(*fakeMQTT)
+	stateMutex.Lock()
+	stateCache[cmdAckDevice] = &MaxDeviceData{Temperature: 13, Mode: "auto", HVACMode: "auto", PresetMode: "none"}
+	stateMutex.Unlock()
+	start()
+
+	handleMQTTPresetCommand(nil, fakeMessage{topic: "max/" + cmdAckDevice + "/preset/set", payload: "boost"})
+	waitForNotification(t, rec, "notify:"+commandUnackedID(cmdAckDevice))
+	expectNothingSent(t, sent, 50*time.Millisecond)
+	st := fc.get("max/" + cmdAckDevice + "/state")
+	if !strings.Contains(st, `"mode":"auto"`) || !strings.Contains(st, `"preset_mode":"none"`) {
+		t.Fatalf("optimistic boost still shown after the command was dropped: %s", st)
+	}
 }

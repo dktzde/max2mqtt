@@ -88,6 +88,7 @@ After the last try without an Ack:
 
 - a setpoint, mode or preset: Home Assistant shows the state from before the command again (or the state the device reported in the meantime);
 - a config change: the previous values come back at once (see `config_status` below);
+- the same happens when a command is dropped without being sent because the duty cycle credits did not suffice within `command_timeout`;
 - the add-on shows the persistent notification `max2mqtt_command_unacked_<id>` in Home Assistant; it disappears after the next acknowledged command to that device.
 
 The WakeUp (`0xF1`) goes before the first message of a command (setpoint, config, links), once per command, unless the device was heard in the last 45 s.
@@ -214,7 +215,7 @@ CUL delivers device Acks as soon as the thermostat answers. Flow:
 1. HA writes a config Number/Select (or climate preset)
 2. Bridge sends the radio command and optimistically updates retained MQTT state
 3. Device Ack (`0x02`) with the message counter of the command confirms; bridge re-publishes authoritative state
-4. Without an Ack the message is sent again up to 3 times; after the last try (or at the latest after ~30 s) the previous values are restored
+4. Without an Ack the message is sent again up to 3 times; after the last try the previous values are restored (safety net: at the latest 2 minutes plus `command_timeout` after the change)
 
 **Was it acknowledged?** Config values are shown at once, before the device acknowledged them. The climate attribute `config_status` shows the state of the last change of each kind of config: `{"valve": {"state": "acknowledged", "field": "boost_duration", "at": "2026-11-10T06:23:39.898+01:00"}, "temperatures": {...}}`. Kinds: `temperatures` (`0x11`), `valve` (`0x12`), `group`, `display`. States: `pending` (sent, waiting for the Ack), `acknowledged`, `not_acknowledged` (previous values restored). To wait in Home Assistant until a change arrived, compare `at` (with milliseconds) with the time the change was sent (`sent_at: "{{ now().isoformat() }}"` right before sending), e.g. before starting a boost with a new boost valve position:
 

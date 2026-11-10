@@ -33,6 +33,9 @@ type QueuedCommand struct {
 	OnAcked func()
 	// OnUnacked is called when the command got no Ack after MaxTries tries
 	OnUnacked func()
+	// OnDropped is called when a command with Cnt > 0 was dropped without being sent
+	// (no duty cycle credits until its timeout)
+	OnDropped func()
 }
 
 // maxTries returns how often the command is sent without an Ack
@@ -164,8 +167,9 @@ func (t *TransmissionManager) Enqueue(devicedID, payload, description string) {
 
 // EnqueueAcked adds a command to a device that waits for the device's Ack (message counter cnt)
 // before the next telegram goes out, and is sent again up to maxTries times (0 = bulkMaxTries)
-// without one. onAcked is called after the Ack, onUnacked after the last try; both may be nil.
-func (t *TransmissionManager) EnqueueAcked(devicedID, payload, description string, cnt, maxTries int, onAcked, onUnacked func()) {
+// without one. onAcked is called after the Ack, onUnacked after the last try, onDropped when the
+// command was dropped without being sent (credit timeout); all may be nil.
+func (t *TransmissionManager) EnqueueAcked(devicedID, payload, description string, cnt, maxTries int, onAcked, onUnacked, onDropped func()) {
 	t.enqueue(QueuedCommand{
 		Payload:     payload,
 		Description: description,
@@ -175,6 +179,7 @@ func (t *TransmissionManager) EnqueueAcked(devicedID, payload, description strin
 		MaxTries:    maxTries,
 		OnAcked:     onAcked,
 		OnUnacked:   onUnacked,
+		OnDropped:   onDropped,
 	})
 }
 
@@ -386,6 +391,9 @@ func (t *TransmissionManager) processCommand(cmd QueuedCommand) {
 		}
 		if !sent {
 			t.clearAck()
+			if cmd.Cnt > 0 && cmd.Tries == 0 && cmd.OnDropped != nil {
+				cmd.OnDropped()
+			}
 			return
 		}
 		if cmd.Cnt == 0 || t.finishAcked(&cmd) {

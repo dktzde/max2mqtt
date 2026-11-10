@@ -7,7 +7,19 @@ import (
 	"time"
 )
 
-const configAckTimeout = 30 * time.Second
+// configAckTimeout is the safety net for a config change whose telegram never reached the end of
+// its tries (normally ConfigUnacked rolls it back after the last try). It runs from the moment the
+// change is tracked, so it is added to the command timeout (credit wait) and must be longer than
+// the tries of all telegrams queued before it (each try waits up to bulkAckTimeout for the Ack).
+const configAckTimeout = 2 * time.Minute
+
+// configRollbackAfter returns when an unconfirmed config change is rolled back at the latest
+func configRollbackAfter() time.Duration {
+	if txMgr != nil {
+		return configAckTimeout + txMgr.Timeout
+	}
+	return configAckTimeout
+}
 
 // PendingConfigAck tracks an outstanding config TX until the device Acks (CUL push).
 type PendingConfigAck struct {
@@ -364,7 +376,7 @@ func (a *AckTracker) TrackConfig(deviceID string, msgType byte, field string, pr
 	if old, ok := m[kind]; ok && old.Timer != nil {
 		old.Timer.Stop()
 	}
-	entry.Timer = time.AfterFunc(configAckTimeout, func() {
+	entry.Timer = time.AfterFunc(configRollbackAfter(), func() {
 		a.rollbackConfig(entry, "Config Ack timeout; restoring previous values")
 	})
 	m[kind] = entry

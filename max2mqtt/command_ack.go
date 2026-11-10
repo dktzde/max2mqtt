@@ -44,34 +44,43 @@ var (
 	commandUnackedNotified = map[string]bool{}
 )
 
-// commandAckCallbacks returns what happens after the device acknowledged a command or after the
-// last try without an Ack.
-func commandAckCallbacks(deviceID string, typeByte byte, cnt int, description string, tries int) (acked, unacked func()) {
+// commandAckCallbacks returns what happens after the device acknowledged a command, after the
+// last try without an Ack, and when the command was dropped without being sent (no duty cycle
+// credits until command_timeout).
+func commandAckCallbacks(deviceID string, typeByte byte, cnt int, description string, tries int) (acked, unacked, dropped func()) {
 	acked = func() { commandAcked(deviceID) }
 	if typeByte == 0xF1 {
-		return acked, nil
+		return acked, nil, nil
 	}
-	unacked = func() {
+	undo := func() {
 		switch typeByte {
 		case 0x40:
 			// back to the state from before the command, unless the device reported one since
 			ackTracker.SetpointUnacked(deviceID, cnt)
-		case 0x11, 0x12, 0x22, 0x23:
+		case 0x11, 0x12, 0x22, 0x23, 0x82:
 			ackTracker.ConfigUnacked(deviceID, cnt)
 		}
-		commandUnacked(deviceID, description, tries)
 	}
-	return acked, unacked
+	unacked = func() {
+		undo()
+		commandUnacked(deviceID, fmt.Sprintf("did not acknowledge \"%s\" after %d tries", description, tries))
+	}
+	dropped = func() {
+		undo()
+		commandUnacked(deviceID, fmt.Sprintf("did not get \"%s\": it was not sent, the duty cycle credits did not suffice within command_timeout", description))
+	}
+	return acked, unacked, dropped
 }
 
-// commandUnacked tells Home Assistant that the device did not acknowledge a command
-func commandUnacked(deviceID, description string, tries int) {
+// commandUnacked tells Home Assistant that a command did not reach the device; what says what
+// happened, after the device ID
+func commandUnacked(deviceID, what string) {
 	commandUnackedMu.Lock()
 	commandUnackedNotified[deviceID] = true
 	commandUnackedMu.Unlock()
 	haNotify(commandUnackedID(deviceID), "MAX! command not acknowledged",
-		fmt.Sprintf("MAX! device %s did not acknowledge \"%s\" after %d tries (%s). Home Assistant shows the last state the device reported; send the command again. This notification disappears after the next acknowledged command to this device.",
-			deviceID, description, tries, time.Now().Format("15:04")))
+		fmt.Sprintf("MAX! device %s %s (%s). Home Assistant shows the last state the device reported; send the command again. This notification disappears after the next acknowledged command to this device.",
+			deviceID, what, time.Now().Format("15:04")))
 }
 
 // commandAcked removes the notification of an earlier unacknowledged command to the device

@@ -1282,8 +1282,8 @@ func queueCommand(dstAddr string, typeByte byte, payload []byte, description str
 		if bulk {
 			txMgr.EnqueueBulkAcked(dstAddr, cmd, descWithCnt, cnt, onAcked, onUnacked)
 		} else if tries := commandAckTries(dstAddr, typeByte); tries > 0 {
-			acked, unacked := commandAckCallbacks(dstAddr, typeByte, cnt, description, tries)
-			txMgr.EnqueueAcked(dstAddr, cmd, descWithCnt, cnt, tries, acked, unacked)
+			acked, unacked, dropped := commandAckCallbacks(dstAddr, typeByte, cnt, description, tries)
+			txMgr.EnqueueAcked(dstAddr, cmd, descWithCnt, cnt, tries, acked, unacked, dropped)
 		} else {
 			txMgr.Enqueue(dstAddr, cmd, descWithCnt)
 		}
