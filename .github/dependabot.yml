@@ -1,0 +1,28 @@
+# Checks the dependencies every six months and opens one grouped PR per ecosystem.
+# Security updates are separate (repository setting) and come at once.
+# Dependabot does not raise the add-on version: bump config.yaml/Dockerfile/CHANGELOG after merging
+# and test on a device before releasing (the bridge drives real radiator valves).
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /max2mqtt
+    schedule:
+      interval: semiannually
+    groups:
+      go-modules:
+        applies-to: version-updates
+        patterns:
+          - "*"
+    commit-message:
+      prefix: deps
+  - package-ecosystem: docker
+    directory: /max2mqtt
+    schedule:
+      interval: semiannually
+    groups:
+      docker-images:
+        applies-to: version-updates
+        patterns:
+          - "*"
+    commit-message:
+      prefix: deps
