@@ -1,0 +1,57 @@
+name: Build
+
+# Checks every PR and every push to main the way the Supervisor builds the add-on:
+# go vet + tests, then the Dockerfile in max2mqtt/ for both add-on architectures
+# (amd64, aarch64 = linux/arm64 via QEMU). The amd64 image is loaded and its binary
+# started once. Nothing is pushed or released.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: max2mqtt
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: max2mqtt/go.mod
+          cache-dependency-path: max2mqtt/go.sum
+      - run: go vet ./...
+      - run: go test -race -count=1 ./...
+
+  docker:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-qemu-action@v4
+        if: matrix.platform != 'linux/amd64'
+      - uses: docker/setup-buildx-action@v4
+      - name: Build add-on image
+        run: docker buildx build max2mqtt --pull --platform ${{ matrix.platform }} --load -t max2mqtt-test:local
+      - name: Check image
+        run: |
+          # version in config.yaml and the io.hass.version label must match
+          want=$(grep -oP '^version: "\K[^"]+' max2mqtt/config.yaml)
+          got=$(docker image inspect max2mqtt-test:local --format '{{ index .Config.Labels "io.hass.version" }}')
+          echo "config.yaml $want, image label $got"
+          [ "$want" = "$got" ]
+          docker run --rm --platform ${{ matrix.platform }} --entrypoint sh max2mqtt-test:local -c \
+            'test -x /app/max2mqtt && test -x /app/run.sh && ls /usr/share/zoneinfo/Europe/Berlin && cat /etc/alpine-release'

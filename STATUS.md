@@ -2,10 +2,11 @@
 
 Handover file for the maintainer and for Claude Code sessions working on this repository. **Read this first, and update it after every step** (state, decisions, next steps), so the next session can continue without the chat history.
 
-Last updated: 2026-11-14 11:55 (1.7.1 on the device; 1.7.2 dependencies + Dependabot)
+Last updated: 2026-11-14 13:05 (CI build check)
 
 ## Current state
 
+- **CI build check (2026-11-14, branch `ci-build-check`):** `.github/workflows/build.yml` runs on every PR and push to `main`: `go vet`, `go test -race`, then `docker buildx build max2mqtt` for linux/amd64 and linux/arm64 (QEMU), like the Supervisor builds it; checks that the `io.hass.version` label matches `config.yaml` and that binary, `run.sh` and tzdata are in the image. Dependabot also keeps these actions up to date (every six months). No add-on change, no new version.
 - **1.7.2 (2026-11-14, branch `dependabot-semiannual`, not on the device):** dependencies updated (serial 1.8.0, x/net 0.62, x/sys 0.50, x/sync 0.25, Go 1.26 builder, Alpine 3.24), no code change; `go test -race` ok, builds for amd64 and arm64. The maintainer installs it only after 1.7.1 has proven itself on the device. Not checked yet: the Docker build by the Supervisor, a USB CUL with serial 1.8.0 (Close must still end a blocked Read; the device here uses TCP).
 - **Dependabot (2026-11-14):** `.github/dependabot.yml` checks the Go modules and the Docker images in `max2mqtt/` every six months (`semiannually`), one grouped PR per ecosystem; Dependabot security updates on. The maintainer chose six months: the bridge runs in the local network only, and every update has to be tested on a device. Dependabot does not raise the add-on version.
 - **1.7.1 on the device since 2026-11-14 11:36** (Supervisor update): CUL connected, version line, credits 3600, bridge online, a pending config change acknowledged at once, no warnings. PR #32 merged 2026-11-14, GitHub pre-release v1.7.1.
