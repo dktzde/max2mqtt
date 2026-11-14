@@ -156,3 +156,35 @@ func TestDisconnectedKeepsANewerConnection(t *testing.T) {
 		t.Fatalf("silence %v, want 1s (newer connection forgotten?)", l.silence())
 	}
 }
+
+// The watchdog closed the connection just before a credit query timeout: the command waits for that reconnect
+func TestPendingReconnectAfterWatchdogClose(t *testing.T) {
+	l, clk := newTestLink()
+	if _, pending := l.pendingReconnect(); pending {
+		t.Fatal("pending reconnect before the first connection")
+	}
+	conn := &fakeCulConn{}
+	l.connected(conn)
+	if _, pending := l.pendingReconnect(); pending {
+		t.Fatal("pending reconnect while connected")
+	}
+	clk.advance(culSilenceTimeout)
+	l.reconnectIfSilent(culSilenceTimeout, "no data received")
+
+	// the credit timeout path finds no connection to close …
+	if _, closed := l.reconnectIfSilent(culSuspectSilence, "credit query timeout"); closed {
+		t.Fatal("closed twice")
+	}
+	// … but sees the reconnect under way and waits for it
+	gen, pending := l.pendingReconnect()
+	if !pending {
+		t.Fatal("reconnect after the watchdog close not reported")
+	}
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		l.connected(&fakeCulConn{})
+	}()
+	if !l.waitReconnected(gen, time.Second) {
+		t.Fatal("did not see the new connection")
+	}
+}

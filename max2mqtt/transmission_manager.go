@@ -456,6 +456,12 @@ func (t *TransmissionManager) tryDispatch(cmd QueuedCommand) (done, sent bool) {
 	if !ok && timedOut && reconnectAfterCreditTimeout() {
 		// The CUL had stopped answering and is connected again: ask once more
 		credits, queueLen, ok, _ = t.queryCreditStatus()
+		// The reconnect took time: check the deadline again (bulk commands wait without limit)
+		if !cmd.Bulk && time.Now().After(t.deadline(cmd)) {
+			slog.Warn("Command timed out while the CUL reconnected. Restoring state.", "device", cmd.DeviceID, "desc", cmd.Description, "wait", time.Since(cmd.CreatedAt))
+			t.maybeRestoreState(cmd.DeviceID)
+			return true, false
+		}
 	}
 	if !ok {
 		// PairPong bypasses TxMgr; if credit query fails we still TX with a warning

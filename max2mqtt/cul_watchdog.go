@@ -102,6 +102,14 @@ func (l *culLink) reconnectIfSilent(limit time.Duration, reason string) (uint64,
 	return gen, true
 }
 
+// pendingReconnect returns the generation of the last connection and true while there is no
+// connection after an earlier one (closed by the watchdog or dropped), i.e. a reconnect is due
+func (l *culLink) pendingReconnect() (uint64, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.gen, l.conn == nil && l.gen > 0
+}
+
 // waitReconnected waits until a connection newer than gen has finished its init
 func (l *culLink) waitReconnected(gen uint64, timeout time.Duration) bool {
 	deadline := time.After(timeout)
@@ -131,12 +139,16 @@ func startCULWatchdog() {
 }
 
 // reconnectAfterCreditTimeout reconnects a CUL that did not answer a credit query and has been
-// silent for culSuspectSilence, and waits for the new connection. It reports whether a new
+// silent for culSuspectSilence (or waits for a reconnect already under way), and waits for the
+// new connection. It reports whether a new
 // connection is ready, so the caller can query the credits again.
 func reconnectAfterCreditTimeout() bool {
 	gen, closed := cul.reconnectIfSilent(culSuspectSilence, "credit query timeout")
 	if !closed {
-		return false
+		// The watchdog (or the reader loop) may have closed it just before: wait for that reconnect too
+		if gen, closed = cul.pendingReconnect(); !closed {
+			return false
+		}
 	}
 	if !cul.waitReconnected(gen, culReconnectWait) {
 		slog.Warn("CUL not back after reconnect", "waited", culReconnectWait)
