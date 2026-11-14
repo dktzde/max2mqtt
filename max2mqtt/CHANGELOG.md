@@ -1,3 +1,10 @@
+## 1.7.1
+
+<sub>2026-11-14</sub>
+
+- **Reconnect a CUL that stops answering:** when the bridge receives no line from the CUL for 2.5 minutes (it answers the credit poll every minute), it closes the connection and opens it again. A credit query before a command that times out after at least 75 s without a line does the same at once; the command waits up to 20 s for the new connection and goes out after it. Found on 2026-11-14: a MAX! Cube with a-culfw sent nothing for 11 minutes while the TCP connection stayed open; a config change was sent 3 times without an Ack and given up, until the connection dropped by itself
+- Not tested on a device yet
+
 ## 1.7.0
 
 <sub>2026-11-10</sub>

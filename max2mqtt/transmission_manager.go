@@ -452,7 +452,17 @@ func (t *TransmissionManager) tryDispatch(cmd QueuedCommand) (done, sent bool) {
 	}
 
 	// 2. Query credits and wait for response
-	credits, queueLen, ok := t.queryCreditStatus()
+	credits, queueLen, ok, timedOut := t.queryCreditStatus()
+	if !ok && timedOut && reconnectAfterCreditTimeout() {
+		// The CUL had stopped answering and is connected again: ask once more
+		credits, queueLen, ok, _ = t.queryCreditStatus()
+		// The reconnect took time: check the deadline again (bulk commands wait without limit)
+		if !cmd.Bulk && time.Now().After(t.deadline(cmd)) {
+			slog.Warn("Command timed out while the CUL reconnected. Restoring state.", "device", cmd.DeviceID, "desc", cmd.Description, "wait", time.Since(cmd.CreatedAt))
+			t.maybeRestoreState(cmd.DeviceID)
+			return true, false
+		}
+	}
 	if !ok {
 		// PairPong bypasses TxMgr; if credit query fails we still TX with a warning
 		// so setpoint/mode changes are not silently dropped (HA would appear "broken").
@@ -495,8 +505,8 @@ func (t *TransmissionManager) bulkWaiting(cmd QueuedCommand) {
 }
 
 // queryCreditStatus sends a credit query and waits for the response.
-// Returns (credits, queueLen, success).
-func (t *TransmissionManager) queryCreditStatus() (credits int, queueLen int, ok bool) {
+// Returns (credits, queueLen, success, timedOut); timedOut is true when the CUL did not answer.
+func (t *TransmissionManager) queryCreditStatus() (credits int, queueLen int, ok bool, timedOut bool) {
 	slog.Debug("TxMgr: Querying credits before TX (X)")
 
 	drainChannel(t.creditResponse)
@@ -505,7 +515,7 @@ func (t *TransmissionManager) queryCreditStatus() (credits int, queueLen int, ok
 	case serialWrite <- "X":
 	default:
 		slog.Warn("TxMgr: Could not send credit query (channel full)")
-		return 0, 0, false
+		return 0, 0, false, false
 	}
 
 	const queryTimeout = 5 * time.Second
@@ -513,7 +523,7 @@ func (t *TransmissionManager) queryCreditStatus() (credits int, queueLen int, ok
 	case <-t.creditResponse:
 	case <-time.After(queryTimeout):
 		slog.Warn("TxMgr: Credit query timeout", "timeout", queryTimeout)
-		return 0, 0, false
+		return 0, 0, false, true
 	}
 
 	t.mutex.RLock()
@@ -522,7 +532,7 @@ func (t *TransmissionManager) queryCreditStatus() (credits int, queueLen int, ok
 	t.mutex.RUnlock()
 
 	slog.Debug("TxMgr: Credit query OK", "credits", credits, "cul_queue", queueLen)
-	return credits, queueLen, true
+	return credits, queueLen, true, false
 }
 
 // dispatchToSerial sends the command payload to the serial channel and reports whether the

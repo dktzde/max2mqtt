@@ -38,6 +38,8 @@ The bridge talks to a CUL-FW compatible radio interface. From v1.2.0, `serial_po
 
 After connect, the protocol is identical for both transports (`V`, `Zr`, `Za<gateway_id>`, credit `X`, `Z…` telegrams). On disconnect, the bridge reconnects automatically.
 
+A CUL that stops answering while the connection stays open is reconnected too: when the bridge has received no line for 2.5 minutes (the CUL answers the credit poll every minute), or when a credit query before a command times out after at least 75 seconds without a line, it closes the connection, opens it again and sends the init commands. In the second case the command waits up to 20 s for the new connection and is sent after it. The log shows `CUL not answering, closing the connection to reconnect`.
+
 A MAX! Cube flashed with a-culfw ("CUBe" build) also works as a TCP CUL on port 2323 (`tcp://<cube-ip>:2323`; flash guide in the [repository README](https://github.com/dktzde/max2mqtt#start-here-gateway_id)).
 
 ### Auto-Ack (`Za`)
@@ -364,6 +366,8 @@ Keep `info` for normal operation; debug is verbose.
 ### Watchdog and restart
 
 There is no watchdog endpoint configured in the addon nor there is a healtcheck configured in Dockerfile. So, we only rely on the containers Exited state, which signals that the main process (PID 1) of the container has died. If you want to automatically restart the add-on in such case, then activate the Watchdog button on the Add-on information page.
+
+A CUL that hangs without closing the connection is handled inside the bridge (see the transport section above: reconnect after 2.5 minutes without a line).
 
 ### Finding your Serial Port
 

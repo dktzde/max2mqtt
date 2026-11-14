@@ -89,6 +89,7 @@ func main() {
 	// Start periodic time sync (broadcasts time on startup and every 24 hours)
 	go startPeriodicTimeSync()
 	go startCreditPolling()
+	go startCULWatchdog()
 
 	// 4. Handle Signals
 	sigChan := make(chan os.Signal, 1)
@@ -271,6 +272,7 @@ func serialReaderLoop(out chan<- string, in <-chan string) {
 
 		resetCreditMax()
 		initializeCUL(port)
+		cul.connected(port)
 		setCULOnline(true)
 
 		// Start Writer Routine for this connection
@@ -280,9 +282,11 @@ func serialReaderLoop(out chan<- string, in <-chan string) {
 		// Read loop
 		scanner := bufio.NewScanner(port)
 		for scanner.Scan() {
+			cul.noteRX()
 			processSerialLine(scanner.Text(), out)
 		}
 
+		cul.disconnected(port)
 		close(stopWriter)
 		setCULOnline(false)
 		slog.Warn("CUL connection lost or closed. Reconnecting...")
