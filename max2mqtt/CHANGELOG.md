@@ -1,9 +1,17 @@
+## 1.7.2
+
+<sub>2026-11-14</sub>
+
+- **Dependencies updated, no change in behaviour:** go.bug.st/serial 1.6.4 → 1.8.0 (since 1.7.0 it uses `golang.org/x/sys/unix` instead of `creack/goselect`), golang.org/x/net 0.62.0, x/sys 0.50.0, x/sync 0.25.0; Go 1.26 builder (`golang:1.26-alpine`, `go 1.26.0` in `go.mod`), runtime image Alpine 3.24. paho.mqtt.golang 1.5.1 was already the latest
+- Dependabot checks the Go modules and Docker images every six months (`.github/dependabot.yml`)
+- Not tested on a device yet; a USB CUL (serial port) is affected by the serial update, a CUL over TCP is not
+
 ## 1.7.1
 
 <sub>2026-11-14</sub>
 
 - **Reconnect a CUL that stops answering:** when the bridge receives no line from the CUL for 2.5 minutes (it answers the credit poll every minute), it closes the connection and opens it again. A credit query before a command that times out after at least 75 s without a line does the same at once; the command waits up to 20 s for the new connection and goes out after it. Found on 2026-11-14: a MAX! Cube with a-culfw sent nothing for 11 minutes while the TCP connection stayed open; a config change was sent 3 times without an Ack and given up, until the connection dropped by itself
-- Not tested on a device yet
+- On the device since 2026-11-14 11:36
 
 ## 1.7.0
 
