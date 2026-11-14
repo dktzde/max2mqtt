@@ -1,9 +1,9 @@
-ARG BUILD_FROM=alpine:3.23
+ARG BUILD_FROM=alpine:3.24
 
 # Build Stage
 # Home Assistant passes BUILD_FROM, but we need a Go builder first.
 # We use standard Go alpine image for building.
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 # Arguments for cross-compilation (passed automatically by docker buildx / HA)
 ARG TARGETOS
