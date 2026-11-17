@@ -271,6 +271,7 @@ func serialReaderLoop(out chan<- string, in <-chan string) {
 		}
 
 		resetCreditMax()
+		rxCheck.reset()
 		initializeCUL(port)
 		cul.connected(port)
 		setCULOnline(true)
@@ -438,6 +439,9 @@ func parseMaxMessage(raw string) (*MaxPacket, error) {
 
 func handleSerialMessage(raw string) {
 	raw = strings.TrimSpace(raw)
+	if !rxCheck.accept(raw) {
+		return
+	}
 	pkt, err := parseMaxMessage(raw)
 	if err != nil {
 		slog.Debug("Failed to parse message", "raw", raw, "error", err)
