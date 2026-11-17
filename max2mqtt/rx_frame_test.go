@@ -24,7 +24,7 @@ func newTestRXCheck(t *testing.T) (*rxFrameCheck, *notifyRecorder) {
 	haNotify = func(id, title, message string) { rec.add("notify:" + id + ":" + title) }
 	haDismiss = func(id string) { rec.add("dismiss:" + id) }
 	t.Cleanup(func() { haNotify, haDismiss = oldNotify, oldDismiss })
-	return &rxFrameCheck{now: time.Now}, rec
+	return &rxFrameCheck{now: time.Now, reconnect: func(reason string) { rec.add("reconnect:" + reason) }}, rec
 }
 
 func TestGoodLinesPass(t *testing.T) {
@@ -58,9 +58,9 @@ func TestManyGarbledLinesNotifyAndReconnect(t *testing.T) {
 		c.accept(gluedLine)
 	}
 	deadline := time.Now().Add(time.Second)
-	for !strings.Contains(rec.list(), "notify:"+garbledNotifyID) {
+	for !strings.Contains(rec.list(), "notify:"+garbledNotifyID) || !strings.Contains(rec.list(), "reconnect:garbled lines") {
 		if time.Now().After(deadline) {
-			t.Fatalf("no notification after %d garbled lines: %q", garbledLimit, rec.list())
+			t.Fatalf("no notification and reconnect after %d garbled lines: %q", garbledLimit, rec.list())
 		}
 		time.Sleep(10 * time.Millisecond)
 	}

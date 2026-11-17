@@ -39,9 +39,11 @@ type rxFrameCheck struct {
 	lastBad  time.Time
 	notified bool
 	now      func() time.Time
+	// reconnect connects the CUL again after many garbled lines (tests record it instead)
+	reconnect func(reason string)
 }
 
-var rxCheck = &rxFrameCheck{now: time.Now}
+var rxCheck = &rxFrameCheck{now: time.Now, reconnect: func(reason string) { cul.reconnect(reason) }}
 
 // reset forgets the garbled lines (new CUL connection)
 func (c *rxFrameCheck) reset() {
@@ -93,7 +95,7 @@ func (c *rxFrameCheck) garbledLine(raw string, length, got int) {
 	go haNotify(garbledNotifyID, "MAX! CUL receives garbled data",
 		fmt.Sprintf("Since %s the CUL delivers MAX! messages whose length does not fit (several telegrams in one line, or one split over two). The bridge drops them, so Acks get lost and commands look unacknowledged. It reconnects to the CUL now; if this notification comes back, unplug the CUL (power) for a few seconds. It disappears after %d minutes without a garbled line.",
 			now.Format("15:04"), int(garbledQuiet.Minutes())))
-	go cul.reconnect("garbled lines")
+	go c.reconnect("garbled lines")
 }
 
 // maybeDismiss removes the notification after garbledQuiet without a garbled line; the caller holds c.mu
