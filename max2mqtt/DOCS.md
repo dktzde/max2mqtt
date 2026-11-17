@@ -93,6 +93,22 @@ After the last try without an Ack:
 - the same happens when a command is dropped without being sent because the duty cycle credits did not suffice within `command_timeout`;
 - the add-on shows the persistent notification `max2mqtt_command_unacked_<id>` in Home Assistant; it disappears after the next acknowledged command to that device.
 
+**Why it failed** is in the notification title, the log and the attributes `config_status`/`command_status` (`reason`, `detail`):
+
+| `reason` | State | Title of the notification | Meaning |
+|---|---|---|---|
+| `no_ack` | `not_acknowledged` | MAX! command not acknowledged (no answer from the device) | sent 3 times, the device did not answer: radio, distance, batteries; not the duty cycle |
+| `ack_timeout` | `not_acknowledged` | same | a config change got no Ack within the safety timeout |
+| `duty_cycle` | `not_sent` | MAX! command not sent (duty cycle limit) | the CUL had too few credits (1 % airtime) until `command_timeout`; `detail` has the credits and the wait |
+| `cul_busy` | `not_sent` | MAX! command not sent (CUL busy) | the CUL's send queue stayed full |
+| `cul_not_ready` | `not_sent` | MAX! command not sent (CUL not answering) | the CUL did not answer the credit query |
+| `queue_timeout` | `not_sent` | MAX! command not sent (queue timeout) | the command waited behind other commands until `command_timeout` |
+| `queue_full` | `not_sent` | MAX! command not sent (queue full) | the bridge's own command queue was full when the command arrived |
+
+When the first try went out and a later try could not be sent, the state is `not_acknowledged` and `reason` says why the next try was not sent (e.g. `duty_cycle`). A message with a wakeup preamble costs about 1 % of an hour's credits, so the CUL can send about 34 of them per hour; renewing a boost every few minutes uses most of that.
+
+**Climate attribute `command_status`:** the state of the last SetTemperature command (setpoint, mode, preset, boost, vacation): `{"state": "not_sent", "command": "Set Preset boost", "at": "2026-11-17T18:45:15.000+01:00", "reason": "duty_cycle", "detail": "not sent: duty cycle limit (1 % airtime), credits 133, needed 200, waited 1m9s"}`. States: `pending`, `acknowledged`, `not_acknowledged`, `not_sent`. Not kept across a restart.
+
 The WakeUp (`0xF1`) goes before the first message of a command (setpoint, config, links), once per command, unless the device was heard in the last 45 s.
 
 ## Set Temperature Verification
@@ -219,12 +235,12 @@ CUL delivers device Acks as soon as the thermostat answers. Flow:
 3. Device Ack (`0x02`) with the message counter of the command confirms; bridge re-publishes authoritative state
 4. Without an Ack the message is sent again up to 3 times; after the last try the previous values are restored (safety net: at the latest 2 minutes plus `command_timeout` after the change)
 
-**Was it acknowledged?** Config values are shown at once, before the device acknowledged them. The climate attribute `config_status` shows the state of the last change of each kind of config: `{"valve": {"state": "acknowledged", "field": "boost_duration", "at": "2026-11-10T06:23:39.898+01:00"}, "temperatures": {...}}`. Kinds: `temperatures` (`0x11`), `valve` (`0x12`), `group`, `display`. States: `pending` (sent, waiting for the Ack), `acknowledged`, `not_acknowledged` (previous values restored). To wait in Home Assistant until a change arrived, compare `at` (with milliseconds) with the time the change was sent (`sent_at: "{{ now().isoformat() }}"` right before sending), e.g. before starting a boost with a new boost valve position:
+**Was it acknowledged?** Config values are shown at once, before the device acknowledged them. The climate attribute `config_status` shows the state of the last change of each kind of config: `{"valve": {"state": "acknowledged", "field": "boost_duration", "at": "2026-11-10T06:23:39.898+01:00"}, "temperatures": {...}}`. Kinds: `temperatures` (`0x11`), `valve` (`0x12`), `group`, `display`. States: `pending` (sent, waiting for the Ack), `acknowledged`, `not_acknowledged` (sent, no Ack; previous values restored), `not_sent` (the bridge could not send it, e.g. duty cycle; previous values restored). A failed change also has `reason` and `detail` (see "Why it failed" above). To wait in Home Assistant until a change arrived, compare `at` (with milliseconds) with the time the change was sent (`sent_at: "{{ now().isoformat() }}"` right before sending), e.g. before starting a boost with a new boost valve position:
 
 ```yaml
 - wait_template: >-
     {% set s = (state_attr('climate.bedroom', 'config_status') or {}).get('valve', {}) %}
-    {{ s.get('state') in ['acknowledged', 'not_acknowledged'] and as_datetime(s.get('at')) >= as_datetime(sent_at) }}
+    {{ s.get('state') in ['acknowledged', 'not_acknowledged', 'not_sent'] and as_datetime(s.get('at')) >= as_datetime(sent_at) }}
   timeout: "00:01:00"
 ```
 
