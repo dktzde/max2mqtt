@@ -416,7 +416,7 @@ func (a *AckTracker) TrackConfig(deviceID string, msgType byte, field string, pr
 		old.Timer.Stop()
 	}
 	entry.Timer = time.AfterFunc(configRollbackAfter(), func() {
-		a.rollbackConfig(entry, "Config Ack timeout; restoring previous values")
+		a.rollbackConfig(entry, "Config Ack timeout; restoring previous values", commandFailure{Reason: failAckTimeout})
 	})
 	m[kind] = entry
 	a.mutex.Unlock()
@@ -464,24 +464,25 @@ func (a *AckTracker) pendingByCounter(deviceID string, cnt int) *PendingConfigAc
 // rollbackConfig restores the values from before a change that was not acknowledged, unless the
 // change was confirmed, rolled back or replaced meanwhile. Only the kind of config the change
 // wrote is restored, so a pending change of another kind keeps its values.
-func (a *AckTracker) rollbackConfig(entry *PendingConfigAck, msg string) bool {
+func (a *AckTracker) rollbackConfig(entry *PendingConfigAck, msg string, f commandFailure) bool {
 	a.mutex.Lock()
 	ok := a.removePending(entry)
 	a.mutex.Unlock()
 	if !ok {
 		return false
 	}
-	slog.Warn(msg, "device", entry.DeviceID, "field", entry.Field)
-	setConfigStatus(entry.DeviceID, configKind(entry.MsgType), entry.Field, statusNotAcknowledged)
+	slog.Warn(msg, "device", entry.DeviceID, "field", entry.Field, "reason", f.Reason, "detail", f.summary())
+	setConfigStatusFailed(entry.DeviceID, configKind(entry.MsgType), entry.Field, f)
 	applyConfigKind(entry.DeviceID, entry.Previous, entry.MsgType)
 	publishDeviceConfig(entry.DeviceID)
 	return true
 }
 
 // ConfigUnacked is called when the device did not acknowledge the config telegram with message
-// counter cnt after all tries: the previous values come back at once instead of after
-// configAckTimeout. Returns false when the telegram does not belong to a pending change.
-func (a *AckTracker) ConfigUnacked(deviceID string, cnt int) bool {
+// counter cnt after all tries, or the telegram could not be sent (f says why): the previous values
+// come back at once instead of after configAckTimeout. Returns false when the telegram does not
+// belong to a pending change.
+func (a *AckTracker) ConfigUnacked(deviceID string, cnt int, f commandFailure) bool {
 	if a == nil {
 		return false
 	}
@@ -491,7 +492,11 @@ func (a *AckTracker) ConfigUnacked(deviceID string, cnt int) bool {
 	if entry == nil {
 		return false
 	}
-	return a.rollbackConfig(entry, "Config not acknowledged; restoring previous values")
+	msg := "Config not acknowledged by the device; restoring previous values"
+	if f.status() == statusNotSent {
+		msg = "Config not sent; restoring previous values"
+	}
+	return a.rollbackConfig(entry, msg, f)
 }
 
 // applyConfigKind restores the part of the config that a telegram of msgType writes

@@ -31,12 +31,20 @@ type QueuedCommand struct {
 	Tries int
 	// OnAcked is called when the device acknowledged the command
 	OnAcked func()
-	// OnUnacked is called when the command got no Ack after MaxTries tries
-	OnUnacked func()
+	// OnUnacked is called when the command got no Ack after MaxTries tries, or when a later try
+	// could not be sent; the failure says why
+	OnUnacked func(commandFailure)
 	// OnDropped is called when a command with Cnt > 0 was dropped before its first try was sent
 	// (no duty cycle credits until its timeout, or the serial queue was full); a command dropped
 	// before a later try calls OnUnacked, as it was sent before without an Ack
-	OnDropped func()
+	OnDropped func(commandFailure)
+
+	// waitReason is why the command waited last (duty cycle credits or a busy CUL queue), and
+	// lastCredits/neededCredits the credits then; dropReason is set when it was dropped
+	waitReason    failReason
+	lastCredits   int
+	neededCredits int
+	dropReason    failReason
 }
 
 // maxTries returns how often the command is sent without an Ack
@@ -170,7 +178,7 @@ func (t *TransmissionManager) Enqueue(devicedID, payload, description string) {
 // before the next telegram goes out, and is sent again up to maxTries times (0 = bulkMaxTries)
 // without one. onAcked is called after the Ack, onUnacked after the last try, onDropped when the
 // command was dropped without being sent (credit timeout); all may be nil.
-func (t *TransmissionManager) EnqueueAcked(devicedID, payload, description string, cnt, maxTries int, onAcked, onUnacked, onDropped func()) {
+func (t *TransmissionManager) EnqueueAcked(devicedID, payload, description string, cnt, maxTries int, onAcked func(), onUnacked, onDropped func(commandFailure)) {
 	t.enqueue(QueuedCommand{
 		Payload:     payload,
 		Description: description,
@@ -194,6 +202,10 @@ func (t *TransmissionManager) EnqueueBulk(devicedID, payload, description string
 // next telegram goes out; onAcked is called after the device's Ack, onUnacked when no Ack came
 // after bulkMaxTries tries. Both may be nil.
 func (t *TransmissionManager) EnqueueBulkAcked(devicedID, payload, description string, cnt int, onAcked, onUnacked func()) {
+	var unacked func(commandFailure)
+	if onUnacked != nil {
+		unacked = func(commandFailure) { onUnacked() }
+	}
 	t.enqueue(QueuedCommand{
 		Payload:     payload,
 		Description: description,
@@ -202,7 +214,7 @@ func (t *TransmissionManager) EnqueueBulkAcked(devicedID, payload, description s
 		Bulk:        true,
 		Cnt:         cnt,
 		OnAcked:     onAcked,
-		OnUnacked:   onUnacked,
+		OnUnacked:   unacked,
 	})
 }
 
@@ -281,12 +293,12 @@ func (t *TransmissionManager) finishAcked(cmd *QueuedCommand) bool {
 		return false
 	}
 	if cmd.maxTries() > 1 {
-		slog.Error("TxMgr: Not acknowledged by the device, giving up", "device", cmd.DeviceID, "desc", cmd.Description, "tries", cmd.Tries)
+		slog.Error("TxMgr: Giving up: "+commandFailure{Reason: failNoAck, Tries: cmd.Tries}.summary(), "device", cmd.DeviceID, "desc", cmd.Description, "tries", cmd.Tries, "reason", failNoAck)
 	} else {
 		slog.Info("TxMgr: No Ack", "device", cmd.DeviceID, "desc", cmd.Description)
 	}
 	if cmd.OnUnacked != nil {
-		cmd.OnUnacked()
+		cmd.OnUnacked(commandFailure{Reason: failNoAck, Tries: cmd.Tries})
 	}
 	return true
 }
@@ -306,7 +318,11 @@ func (t *TransmissionManager) enqueue(cmd QueuedCommand) {
 		}
 		slog.Debug("TxMgr: Enqueued command", "device", devicedID, "desc", description)
 	default:
-		slog.Warn("TxMgr: Queue full! Dropping command", "device", devicedID)
+		slog.Warn("TxMgr: Queue full! Dropping command", "device", devicedID, "desc", description)
+		// the command never reaches the dispatcher: end its pending state (command_status not_sent)
+		if cmd.OnDropped != nil {
+			cmd.OnDropped(commandFailure{Reason: failQueueFull, Waited: time.Since(cmd.CreatedAt)})
+		}
 	}
 }
 
@@ -359,7 +375,7 @@ func (t *TransmissionManager) dispatcherLoop() {
 			t.expectAck(*bulk)
 		}
 		// A bulk command not taken by the serial queue (done but not sent) is tried again later
-		if done, sent := t.tryDispatch(*bulk); done && sent {
+		if done, sent := t.tryDispatch(bulk); done && sent {
 			if t.finishBulk(bulk) {
 				bulk = nil
 			}
@@ -381,7 +397,7 @@ func (t *TransmissionManager) processCommand(cmd QueuedCommand) {
 		if cmd.Cnt > 0 {
 			t.expectAck(cmd)
 		}
-		done, sent := t.tryDispatch(cmd)
+		done, sent := t.tryDispatch(&cmd)
 		if !done {
 			t.clearAck()
 			select {
@@ -408,16 +424,48 @@ func (t *TransmissionManager) processCommand(cmd QueuedCommand) {
 // without being sent: OnDropped before the first try, OnUnacked when earlier tries went out
 // without an Ack (the command was sent, but not acknowledged).
 func (t *TransmissionManager) commandDropped(cmd QueuedCommand) {
+	f := cmd.failure()
 	if cmd.Tries == 0 {
 		if cmd.OnDropped != nil {
-			cmd.OnDropped()
+			cmd.OnDropped(f)
 		}
 		return
 	}
-	slog.Error("TxMgr: Not acknowledged by the device and the next try could not be sent, giving up", "device", cmd.DeviceID, "desc", cmd.Description, "tries", cmd.Tries)
+	slog.Error("TxMgr: Giving up: "+f.summary(), "device", cmd.DeviceID, "desc", cmd.Description, "tries", cmd.Tries, "reason", f.Reason)
 	if cmd.OnUnacked != nil {
-		cmd.OnUnacked()
+		cmd.OnUnacked(f)
 	}
+}
+
+// failure describes why a command was dropped without being sent (again)
+func (c *QueuedCommand) failure() commandFailure {
+	reason := c.dropReason
+	if reason == "" {
+		reason = failQueueTimeout
+	}
+	return commandFailure{
+		Reason:  reason,
+		Tries:   c.Tries,
+		Credits: c.lastCredits,
+		Needed:  c.neededCredits,
+		Waited:  time.Since(c.CreatedAt),
+	}
+}
+
+// dropAfterTimeout marks a command whose command_timeout passed: the reason is why it waited last
+// (no credits, busy CUL queue) or, when it never had to wait, the queue of the bridge itself
+func (t *TransmissionManager) dropAfterTimeout(cmd *QueuedCommand) {
+	cmd.dropReason = cmd.waitReason
+	if cmd.dropReason == "" {
+		cmd.dropReason = failQueueTimeout
+		if cmd.Tries > 0 {
+			// sent, then the timeout passed while waiting for the device's Ack
+			cmd.dropReason = failNoAck
+		}
+	}
+	f := cmd.failure()
+	slog.Warn("Command "+f.notSentText()+". Restoring state.", "device", cmd.DeviceID, "desc", cmd.Description, "reason", f.Reason)
+	t.maybeRestoreState(cmd.DeviceID)
 }
 
 // bulkMinCredits returns the credits a bulk command needs: minCredits plus reservePercent
@@ -443,11 +491,11 @@ func (t *TransmissionManager) deadline(cmd QueuedCommand) time.Time {
 // tryDispatch sends the command if the CUL has credits and queue space.
 // done is true when the command is done (sent, or dropped after its timeout) and false when it
 // has to wait for credits; sent tells whether it went to the CUL.
-func (t *TransmissionManager) tryDispatch(cmd QueuedCommand) (done, sent bool) {
+// The command records why it waited and, when it is dropped, why (see QueuedCommand.dropReason).
+func (t *TransmissionManager) tryDispatch(cmd *QueuedCommand) (done, sent bool) {
 	// 1. Check Timeout before even querying (bulk commands wait without limit)
-	if !cmd.Bulk && time.Now().After(t.deadline(cmd)) {
-		slog.Warn("Command timed out due to duty cycle limits. Restoring state.", "device", cmd.DeviceID, "desc", cmd.Description, "wait", time.Since(cmd.CreatedAt))
-		t.maybeRestoreState(cmd.DeviceID)
+	if !cmd.Bulk && time.Now().After(t.deadline(*cmd)) {
+		t.dropAfterTimeout(cmd)
 		return true, false
 	}
 
@@ -457,9 +505,9 @@ func (t *TransmissionManager) tryDispatch(cmd QueuedCommand) (done, sent bool) {
 		// The CUL had stopped answering and is connected again: ask once more
 		credits, queueLen, ok, _ = t.queryCreditStatus()
 		// The reconnect took time: check the deadline again (bulk commands wait without limit)
-		if !cmd.Bulk && time.Now().After(t.deadline(cmd)) {
-			slog.Warn("Command timed out while the CUL reconnected. Restoring state.", "device", cmd.DeviceID, "desc", cmd.Description, "wait", time.Since(cmd.CreatedAt))
-			t.maybeRestoreState(cmd.DeviceID)
+		if !cmd.Bulk && time.Now().After(t.deadline(*cmd)) {
+			cmd.waitReason = failCULNotReady
+			t.dropAfterTimeout(cmd)
 			return true, false
 		}
 	}
@@ -475,25 +523,30 @@ func (t *TransmissionManager) tryDispatch(cmd QueuedCommand) (done, sent bool) {
 
 	if queueLen >= t.MaxQueue {
 		slog.Warn("TxMgr: CUL queue too busy. Waiting.", "queue", queueLen, "limit", t.MaxQueue, "device", cmd.DeviceID, "desc", cmd.Description)
-		t.bulkWaiting(cmd)
+		cmd.waitReason = failCULBusy
+		t.bulkWaiting(*cmd)
 		return false, false
 	}
 
-	if ok && credits < t.minCredits(cmd) {
+	if ok && credits < t.minCredits(*cmd) {
 		if cmd.Bulk {
-			slog.Info("TxMgr: Week profile waiting for credits.", "credits", credits, "min", t.minCredits(cmd), "device", cmd.DeviceID, "desc", cmd.Description, "since", cmd.CreatedAt.Format(time.TimeOnly))
+			slog.Info("TxMgr: Week profile waiting for credits.", "credits", credits, "min", t.minCredits(*cmd), "device", cmd.DeviceID, "desc", cmd.Description, "since", cmd.CreatedAt.Format(time.TimeOnly))
 		} else {
-			slog.Warn("TxMgr: Insufficient credits. Waiting.", "credits", credits, "min", t.MinCredits, "device", cmd.DeviceID, "desc", cmd.Description, "until", t.deadline(cmd).Format(time.TimeOnly))
+			slog.Warn("TxMgr: Duty cycle: insufficient credits. Waiting.", "credits", credits, "min", t.MinCredits, "device", cmd.DeviceID, "desc", cmd.Description, "until", t.deadline(*cmd).Format(time.TimeOnly))
 		}
-		t.bulkWaiting(cmd)
+		cmd.waitReason, cmd.lastCredits, cmd.neededCredits = failDutyCycle, credits, t.minCredits(*cmd)
+		t.bulkWaiting(*cmd)
 		return false, false
 	}
 
 	// Brief pause after credit query so TCP/serial bridges finish the X reply before Zs
 	time.Sleep(50 * time.Millisecond)
-	if !t.dispatchToSerial(cmd, credits, queueLen) {
+	if !t.dispatchToSerial(*cmd, credits, queueLen) {
+		cmd.dropReason = failCULBusy
 		return true, false
 	}
+	// sent: an earlier wait (credits, busy CUL) is resolved and no longer explains a later failure
+	cmd.waitReason, cmd.lastCredits, cmd.neededCredits = "", 0, 0
 	return true, true
 }
 

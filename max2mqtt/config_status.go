@@ -16,11 +16,14 @@ import (
 // Home Assistant compares the time with the moment it sent the change
 const configStatusTimeLayout = "2006-01-02T15:04:05.000Z07:00"
 
-// ConfigStatus is the acknowledgement state of the last change of one kind of config
+// ConfigStatus is the acknowledgement state of the last change of one kind of config; a failed change (state not_acknowledged or not_sent) also says why:
+// reason (see failReason, e.g. "no_ack" or "duty_cycle") and detail (a short English text).
 type ConfigStatus struct {
-	State string `json:"state"`
-	Field string `json:"field"`
-	At    string `json:"at"`
+	State  string `json:"state"`
+	Field  string `json:"field"`
+	At     string `json:"at"`
+	Reason string `json:"reason,omitempty"`
+	Detail string `json:"detail,omitempty"`
 }
 
 var (
@@ -39,6 +42,19 @@ func setConfigStatus(deviceID, kind, field, state string) {
 		configStatus[deviceID] = m
 	}
 	m[kind] = ConfigStatus{State: state, Field: field, At: time.Now().Format(configStatusTimeLayout)}
+}
+
+// setConfigStatusFailed records a change that did not reach the device and why
+func setConfigStatusFailed(deviceID, kind, field string, f commandFailure) {
+	configStatusMu.Lock()
+	defer configStatusMu.Unlock()
+	m := configStatus[deviceID]
+	if m == nil {
+		m = map[string]ConfigStatus{}
+		configStatus[deviceID] = m
+	}
+	m[kind] = ConfigStatus{State: f.status(), Field: field, At: time.Now().Format(configStatusTimeLayout),
+		Reason: string(f.Reason), Detail: f.summary()}
 }
 
 // configStatusOf returns a copy of the config states of a device, nil when nothing was sent yet
