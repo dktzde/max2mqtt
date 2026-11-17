@@ -95,3 +95,19 @@ func TestNoWakeUpForADeviceJustHeard(t *testing.T) {
 		t.Fatalf("telegram types %q, want only the config valve telegram", got)
 	}
 }
+
+// SetTemperature goes out without a WakeUp, also to a device not heard for a long time: the CUL's
+// "Zs" has a 1 s wakeup preamble (tested on two thermostats 2026-11-17, quiet for 5.5 and 43 min)
+func TestNoWakeUpBeforeSetTemperature(t *testing.T) {
+	resetTestState()
+	resetWakeUpState(t)
+	initAckTracker()
+
+	handleMQTTPresetCommand(nil, fakeMessage{topic: "max/" + wakeTestDevice + "/preset/set", payload: "boost"})
+	handleMQTTModeCommand(nil, fakeMessage{topic: "max/" + wakeTestDevice + "/mode/set", payload: "auto"})
+	handleMQTTVacation(nil, fakeMessage{topic: "max/" + wakeTestDevice + "/vacation/set", payload: "off"})
+
+	if got := txTypes(t, pendingTX()); got != "40 40 40" {
+		t.Fatalf("telegram types %q, want three SetTemperature without WakeUp (40 40 40)", got)
+	}
+}

@@ -1076,10 +1076,8 @@ func handleMQTTCommand(client mqtt.Client, msg mqtt.Message) {
 		"payload_byte", fmt.Sprintf("0x%02X", payloadByte),
 		"group", getDeviceGroupID(srcAddr),
 		"gateway_id", config.GatewayID,
-		"needs_wakeup", deviceNeedsWakeUp(srcAddr),
 	)
 
-	maybeWakeDevice(srcAddr)
 	if ackTracker != nil {
 		ackTracker.TrackSetpoint(srcAddr, temp, modeStr, hvacMode)
 	}
@@ -1088,14 +1086,22 @@ func handleMQTTCommand(client mqtt.Client, msg mqtt.Message) {
 	if verificationMgr != nil {
 		verificationMgr.AddVerification(srcAddr, temp, func() {
 			slog.Warn("Retrying Set Temp", "temp", temp, "src", srcAddr)
-			maybeWakeDevice(srcAddr)
 			sendCommand(srcAddr, 0x40, []byte{payloadByte}, fmt.Sprintf("Retry Set Temp %.1f", temp))
 		})
 	}
 }
 
 // maybeWakeDevice sends WakeUp (0xF1) before commanding sleepy radiator valves. Call it before
-// the first telegram of a command (setpoint, mode, config, links): a WakeUp queued after another
+// the first telegram of a config, link, group or display command.
+//
+// SetTemperature (setpoint, mode, preset, boost, vacation) goes out without a WakeUp, like FHEM:
+// the CUL sends every "Zs" telegram with a 1 s wakeup preamble, which reaches a sleeping
+// thermostat by itself. Tested 2026-11-17 on two radiator thermostats that had been quiet for
+// 5.5 and 43 minutes: auto and boost were acknowledged within about 1 s. A WakeUp is a telegram
+// with its own 1 s preamble (about 100 credits), so it doubled the airtime of every setpoint; a
+// boost renewed every four minutes then used up most of the duty cycle.
+//
+// A WakeUp queued after another
 // telegram reaches the device while it is still answering that one and is lost, and the next
 // telegram may go unanswered too (seen 2026-11-10: config, WakeUp, boost; only the config was
 // acknowledged).
@@ -1181,7 +1187,6 @@ func handleMQTTModeCommand(client mqtt.Client, msg mqtt.Message) {
 		modeStr, hvacMode = "boost", "heat"
 	}
 
-	maybeWakeDevice(srcAddr)
 	if ackTracker != nil {
 		ackTracker.TrackSetpoint(srcAddr, targetTemp, modeStr, hvacMode)
 	}
@@ -1608,7 +1613,6 @@ func handleMQTTPresetCommand(client mqtt.Client, msg mqtt.Message) {
 		hvacMode = "off"
 	}
 
-	maybeWakeDevice(deviceID)
 	if ackTracker != nil {
 		ackTracker.TrackSetpoint(deviceID, targetTemp, modeStr, hvacMode)
 	}

@@ -115,7 +115,6 @@ func handleMQTTVacation(client mqtt.Client, msg mqtt.Message) {
 
 	if strings.EqualFold(payloadStr, "off") {
 		// Auto with temperature 0 = follow the week program (FHEM "desiredTemperature auto")
-		maybeWakeDevice(deviceID)
 		sendCommand(deviceID, 0x40, []byte{0x00}, "End Vacation")
 		return
 	}
@@ -139,7 +138,6 @@ func handleMQTTVacation(client mqtt.Client, msg mqtt.Message) {
 	payload := append([]byte{byte(temp*2) | (0x02 << 6)}, encodeUntil(until)...)
 	slog.Debug("Vacation encoding", "src", deviceID, "temp", temp, "until", untilStr, "payload", fmt.Sprintf("%X", payload))
 
-	maybeWakeDevice(deviceID)
 	if ackTracker != nil {
 		ackTracker.TrackVacation(deviceID, temp, untilStr)
 	}
@@ -149,7 +147,6 @@ func handleMQTTVacation(client mqtt.Client, msg mqtt.Message) {
 	if verificationMgr != nil {
 		verificationMgr.AddVerification(deviceID, temp, func() {
 			slog.Warn("Retrying Set Vacation", "temp", temp, "until", untilStr, "src", deviceID)
-			maybeWakeDevice(deviceID)
 			sendCommand(deviceID, 0x40, payload, "Retry "+description)
 		})
 	}
