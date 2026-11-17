@@ -102,6 +102,21 @@ func (l *culLink) reconnectIfSilent(limit time.Duration, reason string) (uint64,
 	return gen, true
 }
 
+// reconnect closes the open connection, so serialReaderLoop opens a new one
+func (l *culLink) reconnect(reason string) {
+	l.mu.Lock()
+	conn := l.conn
+	l.conn = nil
+	l.mu.Unlock()
+	if conn == nil {
+		return
+	}
+	slog.Warn("Closing the CUL connection to reconnect", "reason", reason)
+	if err := conn.Close(); err != nil {
+		slog.Debug("Closing the CUL connection", "error", err)
+	}
+}
+
 // pendingReconnect returns the generation of the last connection and true while there is no
 // connection after an earlier one (closed by the watchdog or dropped), i.e. a reconnect is due
 func (l *culLink) pendingReconnect() (uint64, bool) {

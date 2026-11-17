@@ -33,6 +33,9 @@ type Config struct {
 	MaxCulQueue         int    `json:"max_cul_queue"`
 	TxCheckPeriod       string `json:"tx_check_period"`
 	WeekProfileReserve  int    `json:"week_profile_reserve_percent"` // % of the CUL's credits week profiles leave for direct commands
+
+	// AcceptUnknownDevices creates every device heard, also those not paired with the bridge
+	AcceptUnknownDevices bool `json:"accept_unknown_devices"`
 }
 
 // Global state
@@ -271,6 +274,7 @@ func serialReaderLoop(out chan<- string, in <-chan string) {
 		}
 
 		resetCreditMax()
+		rxCheck.reset()
 		initializeCUL(port)
 		cul.connected(port)
 		setCULOnline(true)
@@ -438,6 +442,9 @@ func parseMaxMessage(raw string) (*MaxPacket, error) {
 
 func handleSerialMessage(raw string) {
 	raw = strings.TrimSpace(raw)
+	if !rxCheck.accept(raw) {
+		return
+	}
 	pkt, err := parseMaxMessage(raw)
 	if err != nil {
 		slog.Debug("Failed to parse message", "raw", raw, "error", err)
@@ -473,6 +480,11 @@ func handleSerialMessage(raw string) {
 	if pkt.Type == 0x03 {
 		slog.Info("Received TimeInformation request, sending time...", "src", pkt.SrcAddr)
 		sendTimeToDevice(pkt.SrcAddr)
+		return
+	}
+
+	// Only known or trusted devices create entities (see known_devices.go)
+	if !deviceAccepted(pkt) {
 		return
 	}
 
@@ -1334,6 +1346,8 @@ func sendPairPong(targetAddr string) {
 
 	select {
 	case serialWrite <- cmd:
+		// only a PairPong that went out admits the device (see deviceAccepted)
+		markPaired(targetAddr)
 		slog.Info("Sent PairPong", "target", targetAddr, "cnt", cnt)
 		// Schedule time sync for newly paired device (direct, not broadcast)
 		slog.Info("Scheduling time sync for newly paired device", "target", targetAddr)

@@ -76,7 +76,7 @@ func TestCommandSentAgainWithoutAck(t *testing.T) {
 	credits, sent, start := startTxTest(t, time.Minute)
 	credits.Store(900)
 	var acked, unacked atomic.Int32
-	txMgr.EnqueueAcked(cmdAckDevice, "ZsBOOST", "boost", 21, 3, func() { acked.Add(1) }, func() { unacked.Add(1) }, nil)
+	txMgr.EnqueueAcked(cmdAckDevice, "ZsBOOST", "boost", 21, 3, func() { acked.Add(1) }, func(commandFailure) { unacked.Add(1) }, nil)
 	txMgr.Enqueue(cmdAckDevice, "ZsNEXT", "next")
 	start()
 
@@ -94,7 +94,7 @@ func TestCommandRetryStopsAfterAck(t *testing.T) {
 	credits, sent, start := startTxTest(t, time.Minute)
 	credits.Store(900)
 	var acked, unacked atomic.Int32
-	txMgr.EnqueueAcked(cmdAckDevice, "ZsBOOST", "boost", 31, 3, func() { acked.Add(1) }, func() { unacked.Add(1) }, nil)
+	txMgr.EnqueueAcked(cmdAckDevice, "ZsBOOST", "boost", 31, 3, func() { acked.Add(1) }, func(commandFailure) { unacked.Add(1) }, nil)
 	start()
 
 	expectSent(t, sent, "ZsBOOST")
@@ -184,7 +184,7 @@ func TestBoostAcknowledgedOnRetryDismissesNotification(t *testing.T) {
 	stateMutex.Lock()
 	stateCache[cmdAckDevice] = &MaxDeviceData{Temperature: 13, Mode: "auto", HVACMode: "auto", PresetMode: "none"}
 	stateMutex.Unlock()
-	commandUnacked(cmdAckDevice, "did not acknowledge \"Set Preset boost\" after 3 tries") // an earlier command got lost
+	commandUnacked(cmdAckDevice, "Set Preset boost", commandFailure{Reason: failNoAck, Tries: 3}) // an earlier command got lost
 
 	handleMQTTPresetCommand(nil, fakeMessage{topic: "max/" + cmdAckDevice + "/preset/set", payload: "boost"})
 	receive(t, sent)
@@ -291,6 +291,12 @@ func TestDroppedBoostRestoresPreviousState(t *testing.T) {
 	if !strings.Contains(st, `"mode":"auto"`) || !strings.Contains(st, `"preset_mode":"none"`) {
 		t.Fatalf("optimistic boost still shown after the command was dropped: %s", st)
 	}
+	// the notification and command_status say it was the duty cycle, not the device
+	waitForNotification(t, rec, "MAX! command not sent (duty cycle limit)")
+	cs := commandStatusAttr(t, fc, cmdAckDevice)
+	if cs.State != statusNotSent || cs.Reason != string(failDutyCycle) || !strings.Contains(cs.Detail, "credits 100") {
+		t.Fatalf("command_status %+v, want not_sent / duty_cycle with the credits", cs)
+	}
 }
 
 // A try after the first one that cannot be sent (credit timeout) ends like an unacknowledged
@@ -300,7 +306,7 @@ func TestRetryDroppedAfterSentTryCountsAsUnacked(t *testing.T) {
 	credits, sent, start := startTxTest(t, 300*time.Millisecond)
 	credits.Store(900)
 	var unacked, dropped atomic.Int32
-	txMgr.EnqueueAcked(cmdAckDevice, "ZsBOOST", "boost", 51, 3, nil, func() { unacked.Add(1) }, func() { dropped.Add(1) })
+	txMgr.EnqueueAcked(cmdAckDevice, "ZsBOOST", "boost", 51, 3, nil, func(commandFailure) { unacked.Add(1) }, func(commandFailure) { dropped.Add(1) })
 	start()
 
 	expectSent(t, sent, "ZsBOOST")
@@ -332,7 +338,7 @@ func TestDroppedWakeUpDoesNotSuppressTheNextOne(t *testing.T) {
 		t.Fatal("first WakeUp suppressed")
 	}
 	_, _, dropped := commandAckCallbacks(cmdAckDevice, 0xF1, 1, "WakeUp", 1)
-	dropped()
+	dropped(commandFailure{})
 	if !markWakeUpQueued(cmdAckDevice) {
 		t.Fatal("the WakeUp after a dropped one was suppressed")
 	}
