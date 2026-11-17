@@ -1,3 +1,7 @@
+## Unreleased
+
+- **New devices only from trusted telegrams:** a device the bridge does not know yet is created only from a telegram addressed to the gateway (devices paired with the bridge or with the Cube whose address is `gateway_id`) or after it was paired with the bridge. Telegrams of unknown devices to other devices or to the broadcast address are ignored (logged once per device). Found on 2026-11-17: garbled CUL lines created seven climate entities from fragments of real addresses. New option `accept_unknown_devices` (default `false`): `true` creates every device heard, as before (e.g. thermostats linked only to each other)
+
 ## 1.7.2
 
 <sub>2026-11-14</sub>
