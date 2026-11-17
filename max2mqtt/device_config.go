@@ -142,11 +142,15 @@ func updateDeviceGroupID(deviceAddr string, group int) {
 	}
 }
 
+// getDeviceGroupID returns the group of a known device, 0 otherwise. It does not create a config:
+// answering a time request of a foreign device must not make it a known device (see deviceAccepted).
 func getDeviceGroupID(deviceAddr string) int {
-	cfg := getDeviceConfig(deviceAddr)
 	configMutex.RLock()
 	defer configMutex.RUnlock()
-	return cfg.GroupID
+	if cfg, ok := deviceConfigCache[deviceAddr]; ok {
+		return cfg.GroupID
+	}
+	return 0
 }
 
 // DeviceConfigMQTT is the retained payload for max/<id>/config

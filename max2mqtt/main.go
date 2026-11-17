@@ -1310,7 +1310,6 @@ func queueCommand(dstAddr string, typeByte byte, payload []byte, description str
 }
 
 func sendPairPong(targetAddr string) {
-	markPaired(targetAddr)
 	// PairPong: Type 0x01
 	// To send via CUL: "Zs" + HexString
 	cnt := nextMsgCounter()
@@ -1338,6 +1337,8 @@ func sendPairPong(targetAddr string) {
 
 	select {
 	case serialWrite <- cmd:
+		// only a PairPong that went out admits the device (see deviceAccepted)
+		markPaired(targetAddr)
 		slog.Info("Sent PairPong", "target", targetAddr, "cnt", cnt)
 		// Schedule time sync for newly paired device (direct, not broadcast)
 		slog.Info("Scheduling time sync for newly paired device", "target", targetAddr)
