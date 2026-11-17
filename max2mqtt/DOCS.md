@@ -109,7 +109,7 @@ When the first try went out and a later try could not be sent, the state is `not
 
 **Climate attribute `command_status`:** the state of the last SetTemperature command (setpoint, mode, preset, boost, vacation): `{"state": "not_sent", "command": "Set Preset boost", "at": "2026-11-17T18:45:15.000+01:00", "reason": "duty_cycle", "detail": "not sent: duty cycle limit (1 % airtime), credits 133, needed 200, waited 1m9s"}`. States: `pending`, `acknowledged`, `not_acknowledged`, `not_sent`. Not kept across a restart.
 
-The WakeUp (`0xF1`) goes before the first message of a command (setpoint, config, links), once per command, unless the device was heard in the last 45 s.
+The WakeUp (`0xF1`) goes before the first message of a config, link, group or display command, once per command, unless the device was heard in the last 45 s. SetTemperature (setpoint, mode, presets, boost, vacation) goes out without one, like FHEM: the CUL sends every telegram with a 1 s wakeup preamble, which reaches a sleeping thermostat by itself (tested on thermostats quiet for up to 43 minutes). A WakeUp costs as much airtime as the command itself.
 
 ## Set Temperature Verification
 
