@@ -1,4 +1,6 @@
-## Unreleased
+## 1.8.0
+
+<sub>2026-11-17</sub>
 
 - **Error messages say why a command failed:** the notification title, the log and the climate attributes tell a device that did not answer (`no_ack`: "MAX! command not acknowledged (no answer from the device)") from a command the bridge could not send (`duty_cycle`: "MAX! command not sent (duty cycle limit)", with credits and wait; also `cul_busy`, `cul_not_ready`, `queue_timeout`, `queue_full`). Found on 2026-11-17: a boost renewed every four minutes used up the 1 % airtime, three later commands were dropped, and the notification read like a device that did not answer
 - **`config_status`** entries of a failed change have `reason` and `detail`; a change that was never sent has the new state `not_sent` (before: `not_acknowledged`). Automations that wait for `acknowledged`/`not_acknowledged` should also accept `not_sent`
@@ -6,6 +8,7 @@
 - **Garbled CUL lines are dropped:** a line whose length byte is above 0x19 (no MAX! telegram is longer than a week profile part with 7 points) or does not fit the bytes that follow (one RSSI byte allowed) is logged as "Garbled CUL line dropped" and ignored. After 5 such lines within 2 minutes the bridge reconnects to the CUL and shows the notification `max2mqtt_cul_garbled` ("unplug the CUL for a few seconds if it comes back"), removed after 10 minutes without one. Found on 2026-11-17 on a MAX! Cube with a-culfw: when several thermostats answered at the same time (Acks, time requests at :07, telegrams to link partners), it delivered several telegrams glued into one line with the length byte 0x1A-0x1D, 36 lines that day, from 17:07 to 17:15 nearly every line; the bridge could not match the Acks and created devices from fragments of real addresses
 - **New devices only from trusted telegrams:** a device the bridge does not know yet is created only from a telegram addressed to the gateway (devices paired with the bridge or with the Cube whose address is `gateway_id`) or after it was paired with the bridge. Telegrams of unknown devices to other devices or to the broadcast address are ignored (logged once per device). Found on 2026-11-17: garbled CUL lines created seven climate entities from fragments of real addresses. New option `accept_unknown_devices` (default `false`): `true` creates every device heard, as before (e.g. thermostats linked only to each other)
 - **No WakeUp before SetTemperature:** setpoint, mode, presets (including boost) and vacation go out without a WakeUp telegram first, like FHEM. The CUL sends every telegram with a 1 s wakeup preamble, which reaches a sleeping thermostat by itself; tested on 2026-11-17 on two radiator thermostats quiet for 5.5 and 43 minutes, both acknowledged within about 1 s. Each WakeUp cost as much airtime as the command (about 100 credits); a boost renewed every four minutes used up most of the duty cycle. Config, link, group and display commands still send a WakeUp first
+- Not tested on a device yet
 
 ## 1.7.2
 
