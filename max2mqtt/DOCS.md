@@ -379,6 +379,10 @@ Keep `info` for normal operation; debug is verbose.
 
 ## Add-on Configuration
 
+
+### Unknown devices (`accept_unknown_devices`)
+
+A device the bridge does not know yet (not in `/data/devices.json`, not heard since the start) is created only from a telegram addressed to the gateway (`gateway_id`), or after it was paired with the bridge (`max/bridge/pair`). Its telegrams to other devices or to the broadcast address are ignored and logged once (`Ignored telegrams from an unknown device`). This keeps garbled radio lines and the neighbour's thermostats out of Home Assistant. Set `accept_unknown_devices: true` to create every device heard, as before (e.g. thermostats that are only linked to each other and never paired).
 ### Watchdog and restart
 
 There is no watchdog endpoint configured in the addon nor there is a healtcheck configured in Dockerfile. So, we only rely on the containers Exited state, which signals that the main process (PID 1) of the container has died. If you want to automatically restart the add-on in such case, then activate the Watchdog button on the Add-on information page.

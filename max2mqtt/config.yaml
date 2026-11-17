@@ -23,6 +23,7 @@ options:
   max_cul_queue: 5
   tx_check_period: "1m"
   week_profile_reserve_percent: 20
+  accept_unknown_devices: false
 schema:
   serial_port: str
   baud_rate: int
@@ -36,6 +37,7 @@ schema:
   max_cul_queue: int
   tx_check_period: str
   week_profile_reserve_percent: int(0,100)
+  accept_unknown_devices: bool?
 devices:
   - "/dev/ttyACM0"
   - "/dev/ttyACM1"
