@@ -19,22 +19,48 @@ type CommandStatus struct {
 	At      string `json:"at"`
 	Reason  string `json:"reason,omitempty"`
 	Detail  string `json:"detail,omitempty"`
+	seq     uint64 // which command the status belongs to (see finishCommandStatus)
 }
 
 var (
-	commandStatusMu sync.Mutex
-	commandStatus   = map[string]CommandStatus{}
+	commandStatusMu  sync.Mutex
+	commandStatus    = map[string]CommandStatus{}
+	commandStatusSeq uint64
 )
 
-// setCommandStatus records the state of the last SetTemperature command; f is nil unless it failed
-func setCommandStatus(deviceID, command, state string, f *commandFailure) {
+func newCommandStatus(command, state string, f *commandFailure) CommandStatus {
 	st := CommandStatus{State: state, Command: command, At: time.Now().Format(configStatusTimeLayout)}
 	if f != nil {
 		st.Reason, st.Detail = string(f.Reason), f.summary()
 	}
+	return st
+}
+
+// setCommandStatus records a new SetTemperature command (state pending) and returns its token for
+// finishCommandStatus; f is nil unless it failed
+func setCommandStatus(deviceID, command, state string, f *commandFailure) uint64 {
+	st := newCommandStatus(command, state, f)
 	commandStatusMu.Lock()
+	defer commandStatusMu.Unlock()
+	commandStatusSeq++
+	st.seq = commandStatusSeq
 	commandStatus[deviceID] = st
-	commandStatusMu.Unlock()
+	return st.seq
+}
+
+// finishCommandStatus records the outcome of the command with token seq, unless a newer command to
+// the device was registered meanwhile: the attribute always describes the latest command. Returns
+// whether the status was updated.
+func finishCommandStatus(deviceID string, seq uint64, command, state string, f *commandFailure) bool {
+	st := newCommandStatus(command, state, f)
+	st.seq = seq
+	commandStatusMu.Lock()
+	defer commandStatusMu.Unlock()
+	if cur, ok := commandStatus[deviceID]; ok && cur.seq != seq {
+		return false
+	}
+	commandStatus[deviceID] = st
+	return true
 }
 
 // commandStatusOf returns the state of the last SetTemperature command, false when none was sent

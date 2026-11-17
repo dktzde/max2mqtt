@@ -91,3 +91,45 @@ func TestAckedBoostCommandStatus(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// A late result of an older command must not overwrite the status of a newer, pending one
+func TestOlderCommandResultDoesNotOverwriteNewerStatus(t *testing.T) {
+	resetTestState()
+	seqA := setCommandStatus(cmdAckDevice, "Set Preset boost", statusPending, nil)
+	seqB := setCommandStatus(cmdAckDevice, "Set Preset boost", statusPending, nil)
+	if finishCommandStatus(cmdAckDevice, seqA, "Set Preset boost", statusAcknowledged, nil) {
+		t.Fatal("the older command updated the status")
+	}
+	if st, _ := commandStatusOf(cmdAckDevice); st.State != statusPending {
+		t.Fatalf("newer command should still be pending: %+v", st)
+	}
+	f := commandFailure{Reason: failNoAck, Tries: 3}
+	if !finishCommandStatus(cmdAckDevice, seqB, "Set Preset boost", f.status(), &f) {
+		t.Fatal("the latest command did not update the status")
+	}
+	if st, _ := commandStatusOf(cmdAckDevice); st.State != statusNotAcknowledged || st.Reason != string(failNoAck) {
+		t.Fatalf("unexpected status: %+v", st)
+	}
+}
+
+// A command rejected by a full queue ends with not_sent instead of staying pending
+func TestQueueFullCallsOnDropped(t *testing.T) {
+	resetTestState()
+	tm := &TransmissionManager{queue: make(chan QueuedCommand)} // no reader: always full
+	var got *commandFailure
+	tm.enqueue(QueuedCommand{DeviceID: cmdAckDevice, CreatedAt: time.Now(), OnDropped: func(f commandFailure) { got = &f }})
+	if got == nil || got.Reason != failQueueFull || got.status() != statusNotSent {
+		t.Fatalf("expected queue_full/not_sent, got %+v", got)
+	}
+}
+
+// A credit shortage resolved by a successful send does not explain a later timeout
+func TestTimeoutAfterSentTryIsNoAckNotDutyCycle(t *testing.T) {
+	resetTestState()
+	cmd := &QueuedCommand{DeviceID: cmdAckDevice, Tries: 1, CreatedAt: time.Now()}
+	tm := &TransmissionManager{}
+	tm.dropAfterTimeout(cmd)
+	if f := cmd.failure(); f.Reason != failNoAck || f.status() != statusNotAcknowledged {
+		t.Fatalf("expected no_ack, got %+v", f)
+	}
+}

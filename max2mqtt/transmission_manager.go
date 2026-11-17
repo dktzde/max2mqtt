@@ -318,7 +318,11 @@ func (t *TransmissionManager) enqueue(cmd QueuedCommand) {
 		}
 		slog.Debug("TxMgr: Enqueued command", "device", devicedID, "desc", description)
 	default:
-		slog.Warn("TxMgr: Queue full! Dropping command", "device", devicedID)
+		slog.Warn("TxMgr: Queue full! Dropping command", "device", devicedID, "desc", description)
+		// the command never reaches the dispatcher: end its pending state (command_status not_sent)
+		if cmd.OnDropped != nil {
+			cmd.OnDropped(commandFailure{Reason: failQueueFull, Waited: time.Since(cmd.CreatedAt)})
+		}
 	}
 }
 
@@ -454,6 +458,10 @@ func (t *TransmissionManager) dropAfterTimeout(cmd *QueuedCommand) {
 	cmd.dropReason = cmd.waitReason
 	if cmd.dropReason == "" {
 		cmd.dropReason = failQueueTimeout
+		if cmd.Tries > 0 {
+			// sent, then the timeout passed while waiting for the device's Ack
+			cmd.dropReason = failNoAck
+		}
 	}
 	f := cmd.failure()
 	slog.Warn("Command "+f.notSentText()+". Restoring state.", "device", cmd.DeviceID, "desc", cmd.Description, "reason", f.Reason)
@@ -537,6 +545,8 @@ func (t *TransmissionManager) tryDispatch(cmd *QueuedCommand) (done, sent bool) 
 		cmd.dropReason = failCULBusy
 		return true, false
 	}
+	// sent: an earlier wait (credits, busy CUL) is resolved and no longer explains a later failure
+	cmd.waitReason, cmd.lastCredits, cmd.neededCredits = "", 0, 0
 	return true, true
 }
 

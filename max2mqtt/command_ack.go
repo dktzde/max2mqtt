@@ -52,13 +52,13 @@ func commandAckCallbacks(deviceID string, typeByte byte, cnt int, description st
 	if typeByte == 0xF1 {
 		return func() { commandAcked(deviceID) }, nil, func(commandFailure) { clearWakeUpQueued(deviceID) }
 	}
+	var seq uint64
 	if typeByte == 0x40 {
-		setCommandStatus(deviceID, description, statusPending, nil)
+		seq = setCommandStatus(deviceID, description, statusPending, nil)
 		publishAttributes(deviceID)
 	}
 	acked = func() {
-		if typeByte == 0x40 {
-			setCommandStatus(deviceID, description, statusAcknowledged, nil)
+		if typeByte == 0x40 && finishCommandStatus(deviceID, seq, description, statusAcknowledged, nil) {
 			publishAttributes(deviceID)
 		}
 		commandAcked(deviceID)
@@ -68,8 +68,9 @@ func commandAckCallbacks(deviceID string, typeByte byte, cnt int, description st
 		case 0x40:
 			// back to the state from before the command, unless the device reported one since
 			ackTracker.SetpointUnacked(deviceID, cnt)
-			setCommandStatus(deviceID, description, f.status(), &f)
-			publishAttributes(deviceID)
+			if finishCommandStatus(deviceID, seq, description, f.status(), &f) {
+				publishAttributes(deviceID)
+			}
 		case 0x11, 0x12, 0x22, 0x23, 0x82:
 			ackTracker.ConfigUnacked(deviceID, cnt, f)
 		}

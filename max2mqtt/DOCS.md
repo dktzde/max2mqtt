@@ -103,6 +103,7 @@ After the last try without an Ack:
 | `cul_busy` | `not_sent` | MAX! command not sent (CUL busy) | the CUL's send queue stayed full |
 | `cul_not_ready` | `not_sent` | MAX! command not sent (CUL not answering) | the CUL did not answer the credit query |
 | `queue_timeout` | `not_sent` | MAX! command not sent (queue timeout) | the command waited behind other commands until `command_timeout` |
+| `queue_full` | `not_sent` | MAX! command not sent (queue full) | the bridge's own command queue was full when the command arrived |
 
 When the first try went out and a later try could not be sent, the state is `not_acknowledged` and `reason` says why the next try was not sent (e.g. `duty_cycle`). A message with a wakeup preamble costs about 1 % of an hour's credits, so the CUL can send about 34 of them per hour; renewing a boost every few minutes uses most of that.
 

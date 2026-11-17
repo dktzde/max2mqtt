@@ -27,6 +27,8 @@ const (
 	failCULNotReady failReason = "cul_not_ready"
 	// failQueueTimeout: not sent (again), the command waited behind other commands until command_timeout
 	failQueueTimeout failReason = "queue_timeout"
+	// failQueueFull: not sent, the bridge's own command queue was full when the command arrived
+	failQueueFull failReason = "queue_full"
 )
 
 // statusNotSent is the config_status/command_status state of a command that never went out
@@ -62,6 +64,8 @@ func (f commandFailure) notSentText() string {
 		return "not sent: the CUL did not answer"
 	case failQueueTimeout:
 		return fmt.Sprintf("not sent: waited %s behind other commands", waited)
+	case failQueueFull:
+		return "not sent: the bridge's command queue was full"
 	}
 	return "not sent"
 }
@@ -93,6 +97,8 @@ func (f commandFailure) title() string {
 		return "MAX! command not sent (CUL not answering)"
 	case failQueueTimeout:
 		return "MAX! command not sent (queue timeout)"
+	case failQueueFull:
+		return "MAX! command not sent (queue full)"
 	}
 	return "MAX! command failed"
 }
