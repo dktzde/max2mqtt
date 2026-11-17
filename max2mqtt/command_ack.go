@@ -45,42 +45,48 @@ var (
 )
 
 // commandAckCallbacks returns what happens after the device acknowledged a command, after the
-// last try without an Ack, and when the command was dropped without being sent (no duty cycle
-// credits until command_timeout).
-func commandAckCallbacks(deviceID string, typeByte byte, cnt int, description string, tries int) (acked, unacked, dropped func()) {
-	acked = func() { commandAcked(deviceID) }
+// last try without an Ack, and when the command was dropped without being sent (duty cycle
+// credits, busy CUL, see commandFailure). A SetTemperature telegram (setpoint, mode, boost,
+// vacation) also keeps the attribute command_status up to date.
+func commandAckCallbacks(deviceID string, typeByte byte, cnt int, description string, tries int) (acked func(), unacked, dropped func(commandFailure)) {
 	if typeByte == 0xF1 {
-		return acked, nil, func() { clearWakeUpQueued(deviceID) }
+		return func() { commandAcked(deviceID) }, nil, func(commandFailure) { clearWakeUpQueued(deviceID) }
 	}
-	undo := func() {
+	if typeByte == 0x40 {
+		setCommandStatus(deviceID, description, statusPending, nil)
+		publishAttributes(deviceID)
+	}
+	acked = func() {
+		if typeByte == 0x40 {
+			setCommandStatus(deviceID, description, statusAcknowledged, nil)
+			publishAttributes(deviceID)
+		}
+		commandAcked(deviceID)
+	}
+	failed := func(f commandFailure) {
 		switch typeByte {
 		case 0x40:
 			// back to the state from before the command, unless the device reported one since
 			ackTracker.SetpointUnacked(deviceID, cnt)
+			setCommandStatus(deviceID, description, f.status(), &f)
+			publishAttributes(deviceID)
 		case 0x11, 0x12, 0x22, 0x23, 0x82:
-			ackTracker.ConfigUnacked(deviceID, cnt)
+			ackTracker.ConfigUnacked(deviceID, cnt, f)
 		}
+		commandUnacked(deviceID, description, f)
 	}
-	unacked = func() {
-		undo()
-		commandUnacked(deviceID, fmt.Sprintf("did not acknowledge \"%s\" after %d tries", description, tries))
-	}
-	dropped = func() {
-		undo()
-		commandUnacked(deviceID, fmt.Sprintf("did not get \"%s\": it was not sent (no duty cycle credits within command_timeout, or the CUL connection was not ready)", description))
-	}
-	return acked, unacked, dropped
+	return acked, failed, failed
 }
 
-// commandUnacked tells Home Assistant that a command did not reach the device; what says what
-// happened, after the device ID
-func commandUnacked(deviceID, what string) {
+// commandUnacked tells Home Assistant that a command did not reach the device and why: the device
+// did not answer, or the bridge could not send it (duty cycle, CUL)
+func commandUnacked(deviceID, description string, f commandFailure) {
 	commandUnackedMu.Lock()
 	commandUnackedNotified[deviceID] = true
 	commandUnackedMu.Unlock()
-	haNotify(commandUnackedID(deviceID), "MAX! command not acknowledged",
-		fmt.Sprintf("MAX! device %s %s (%s). Home Assistant shows the last state the device reported; send the command again. This notification disappears after the next acknowledged command to this device.",
-			deviceID, what, time.Now().Format("15:04")))
+	haNotify(commandUnackedID(deviceID), f.title(),
+		fmt.Sprintf("MAX! device %s, command \"%s\" (%s): %s.\n\n%s Home Assistant shows the last state the device reported. This notification disappears after the next acknowledged command to this device.",
+			deviceID, description, time.Now().Format("15:04"), f.summary(), f.hint()))
 }
 
 // commandAcked removes the notification of an earlier unacknowledged command to the device

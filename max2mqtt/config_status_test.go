@@ -84,7 +84,7 @@ func TestUnackedValveKeepsPendingTemperatures(t *testing.T) {
 		"max_valve_setting": 100, "valve_offset": 0}`})
 	cnt := countersByType(t)
 
-	if !ackTracker.ConfigUnacked(ackTestDevice, cnt["12"]) {
+	if !ackTracker.ConfigUnacked(ackTestDevice, cnt["12"], commandFailure{Reason: failNoAck, Tries: 3}) {
 		t.Fatal("valve change not found by its counter")
 	}
 	if d := boostDurationOf(ackTestDevice); d != 5 {
@@ -121,7 +121,7 @@ func TestReplacedConfigChangeIsNotRolledBack(t *testing.T) {
 	second := countersByType(t)["12"]
 
 	// The first change was replaced: giving up on its telegram must not undo the second one
-	if ackTracker.ConfigUnacked(ackTestDevice, first) {
+	if ackTracker.ConfigUnacked(ackTestDevice, first, commandFailure{Reason: failNoAck, Tries: 3}) {
 		t.Fatal("the replaced change was rolled back")
 	}
 	if d := boostDurationOf(ackTestDevice); d != 30 {
