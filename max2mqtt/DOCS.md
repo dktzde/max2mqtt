@@ -418,6 +418,10 @@ followed by init commands `V`, `Zr`, `Za<gateway_id>` and `X` (same as USB).
 
 ## Troubleshooting
 
+### Garbled CUL lines
+
+The log shows `Garbled CUL line dropped: no MAX! telegram has this length` when the CUL delivers a line that cannot be a MAX! telegram: its length byte is above 0x19 (the longest telegram is a week profile part with 7 points) or does not fit the bytes that follow (one extra RSSI byte is allowed). A MAX! Cube with a-culfw did this when several devices sent at the same time: several telegrams glued into one line with the length byte 0x1A-0x1D, or one telegram split over two lines. Single lines are harmless (a lost Ack is sent again). After 5 within 2 minutes the bridge reconnects to the CUL and shows the persistent notification `max2mqtt_cul_garbled`; if it comes back, unplug the CUL (power) for a few seconds. It is removed after 10 minutes without a garbled line.
+
 ### Cannot open CUL / reconnect loop
 
 - **USB:** Confirm the device path exists inside the add-on (`/dev/serial/by-id/...`) and that the add-on has access to the stick.

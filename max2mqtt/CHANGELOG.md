@@ -1,3 +1,7 @@
+## Unreleased
+
+- **Garbled CUL lines are dropped:** a line whose length byte is above 0x19 (no MAX! telegram is longer than a week profile part with 7 points) or does not fit the bytes that follow (one RSSI byte allowed) is logged as "Garbled CUL line dropped" and ignored. After 5 such lines within 2 minutes the bridge reconnects to the CUL and shows the notification `max2mqtt_cul_garbled` ("unplug the CUL for a few seconds if it comes back"), removed after 10 minutes without one. Found on 2026-11-17 on a MAX! Cube with a-culfw: when several thermostats answered at the same time (Acks, time requests at :07, telegrams to link partners), it delivered several telegrams glued into one line with the length byte 0x1A-0x1D, 36 lines that day, from 17:07 to 17:15 nearly every line; the bridge could not match the Acks and created devices from fragments of real addresses
+
 ## 1.7.2
 
 <sub>2026-11-14</sub>
