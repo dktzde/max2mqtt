@@ -33,6 +33,9 @@ type Config struct {
 	MaxCulQueue         int    `json:"max_cul_queue"`
 	TxCheckPeriod       string `json:"tx_check_period"`
 	WeekProfileReserve  int    `json:"week_profile_reserve_percent"` // % of the CUL's credits week profiles leave for direct commands
+
+	// AcceptUnknownDevices creates every device heard, also those not paired with the bridge
+	AcceptUnknownDevices bool `json:"accept_unknown_devices"`
 }
 
 // Global state
@@ -473,6 +476,11 @@ func handleSerialMessage(raw string) {
 	if pkt.Type == 0x03 {
 		slog.Info("Received TimeInformation request, sending time...", "src", pkt.SrcAddr)
 		sendTimeToDevice(pkt.SrcAddr)
+		return
+	}
+
+	// Only known or trusted devices create entities (see known_devices.go)
+	if !deviceAccepted(pkt) {
 		return
 	}
 
@@ -1302,6 +1310,7 @@ func queueCommand(dstAddr string, typeByte byte, payload []byte, description str
 }
 
 func sendPairPong(targetAddr string) {
+	markPaired(targetAddr)
 	// PairPong: Type 0x01
 	// To send via CUL: "Zs" + HexString
 	cnt := nextMsgCounter()
