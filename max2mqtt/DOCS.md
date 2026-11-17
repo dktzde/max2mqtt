@@ -93,7 +93,7 @@ After the last try without an Ack:
 - the same happens when a command is dropped without being sent because the duty cycle credits did not suffice within `command_timeout`;
 - the add-on shows the persistent notification `max2mqtt_command_unacked_<id>` in Home Assistant; it disappears after the next acknowledged command to that device.
 
-The WakeUp (`0xF1`) goes before the first message of a command (setpoint, config, links), once per command, unless the device was heard in the last 45 s.
+The WakeUp (`0xF1`) goes before the first message of a config, link, group or display command, once per command, unless the device was heard in the last 45 s. SetTemperature (setpoint, mode, presets, boost, vacation) goes out without one, like FHEM: the CUL sends every telegram with a 1 s wakeup preamble, which reaches a sleeping thermostat by itself (tested on thermostats quiet for up to 43 minutes). A WakeUp costs as much airtime as the command itself.
 
 ## Set Temperature Verification
 

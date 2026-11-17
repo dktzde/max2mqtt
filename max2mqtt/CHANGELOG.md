@@ -1,3 +1,7 @@
+## Unreleased
+
+- **No WakeUp before SetTemperature:** setpoint, mode, presets (including boost) and vacation go out without a WakeUp telegram first, like FHEM. The CUL sends every telegram with a 1 s wakeup preamble, which reaches a sleeping thermostat by itself; tested on 2026-11-17 on two radiator thermostats quiet for 5.5 and 43 minutes, both acknowledged within about 1 s. Each WakeUp cost as much airtime as the command (about 100 credits); a boost renewed every four minutes used up most of the duty cycle. Config, link, group and display commands still send a WakeUp first
+
 ## 1.7.2
 
 <sub>2026-11-14</sub>
