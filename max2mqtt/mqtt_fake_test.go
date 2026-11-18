@@ -68,6 +68,7 @@ func resetTestState() *fakeMQTT {
 	commandStatusMu.Lock()
 	commandStatus = map[string]CommandStatus{}
 	commandStatusMu.Unlock()
+	displayModeCleared = sync.Map{}
 	txMgr = nil
 	verificationMgr = nil
 	ackTracker = nil
