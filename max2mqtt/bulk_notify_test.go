@@ -32,6 +32,7 @@ func recordNotifications(t *testing.T, notifyAfter time.Duration) *notifyRecorde
 	haNotify = func(id, title, message string) { rec.add("notify:" + id + ":" + title) }
 	haDismiss = func(id string) { rec.add("dismiss:" + id) }
 	bulkNotifyAfter = notifyAfter
+	useDeviceNames(t, map[string]string{})
 	t.Cleanup(func() {
 		haNotify, haDismiss, bulkNotifyAfter = oldNotify, oldDismiss, oldAfter
 	})

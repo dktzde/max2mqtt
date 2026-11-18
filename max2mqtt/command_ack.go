@@ -90,9 +90,12 @@ func commandUnacked(deviceID, description string, f commandFailure) {
 	commandUnackedMu.Lock()
 	commandUnackedNotified[deviceID] = true
 	commandUnackedMu.Unlock()
-	haNotify(commandUnackedID(deviceID), f.title(),
-		fmt.Sprintf("MAX! device %s, command \"%s\" (%s): %s.\n\n%s Home Assistant shows the last state the device reported. This notification disappears after the next acknowledged command to this device.",
-			deviceID, description, time.Now().Format("15:04"), f.summary(), f.hint()))
+	at := time.Now().Format("15:04")
+	notifyDevice(commandUnackedID(deviceID), deviceID, func(name, label string) (string, string) {
+		return withDeviceName(f.title(), name),
+			fmt.Sprintf("MAX! device %s, command \"%s\" (%s): %s.\n\n%s Home Assistant shows the last state the device reported. This notification disappears after the next acknowledged command to this device.",
+				label, description, at, f.summary(), f.hint())
+	})
 }
 
 // commandAcked removes the notification of an earlier unacknowledged command to the device

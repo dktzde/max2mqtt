@@ -93,6 +93,8 @@ After the last try without an Ack:
 - the same happens when a command is dropped without being sent because the duty cycle credits did not suffice within `command_timeout`;
 - the add-on shows the persistent notification `max2mqtt_command_unacked_<id>` in Home Assistant; it disappears after the next acknowledged command to that device, also after a restart of the add-on (the first acknowledged command of each device after the start removes it).
 
+Notifications about a device name it the way Home Assistant does, with the radio address in brackets, e.g. "MAX! device Living room (0A1B2C)"; the name is also at the end of the title. The name is the one of the entity with the attribute `device_rf_address` (thermostats), otherwise the device name you set, otherwise the shortest entity name of the device. The add-on reads the names through the Home Assistant template API (`homeassistant_api`) and keeps them for 10 minutes; without a name (or outside Home Assistant) only the address is shown.
+
 **Why it failed** is in the notification title, the log and the attributes `config_status`/`command_status` (`reason`, `detail`):
 
 | `reason` | State | Title of the notification | Meaning |
