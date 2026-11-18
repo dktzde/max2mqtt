@@ -50,13 +50,15 @@ const forgetDev, otherDev = "0A1B2C", "0A1B2D"
 func setupForgetTest(t *testing.T) *forgetFakeMQTT {
 	t.Helper()
 	fc := &forgetFakeMQTT{fakeMQTT: resetTestState()}
+	oldClient, oldWait, oldFile, oldSaved := mqttClient, forgetCollectWait, deviceDataFile, lastSaved
 	mqttClient = fc
-	oldWait, oldFile := forgetCollectWait, deviceDataFile
 	forgetCollectWait = 0
-	deviceDataFile = t.TempDir() + "/devices.json"
+	deviceDataFile, lastSaved = t.TempDir()+"/devices.json", nil
 	recordNotifications(t, time.Hour)
 	resetKnownDevices(t)
-	t.Cleanup(func() { forgetCollectWait, deviceDataFile = oldWait, oldFile })
+	t.Cleanup(func() {
+		mqttClient, forgetCollectWait, deviceDataFile, lastSaved = oldClient, oldWait, oldFile, oldSaved
+	})
 	return fc
 }
 
@@ -72,6 +74,7 @@ func TestForgetTopicMatches(t *testing.T) {
 		"homeassistant/sensor/max_bridge_credits/config",
 		"homeassistant/climate/10A1B2C/config",
 		"max/0A1B2C/state",
+		"homeassistant/sensor/0A1B2C/room_humidity/config",
 	}
 	for _, s := range yes {
 		if !forgetTopicMatches(s, forgetDev) {

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -80,29 +81,33 @@ func snapshotDeviceData() map[string]*persistedDevice {
 
 // saveDeviceData writes the device data if it changed since the last save
 func saveDeviceData() {
+	if err := saveDeviceDataErr(); err != nil {
+		slog.Warn("Cannot save device data", "file", deviceDataFile, "error", err)
+	}
+}
+
+// saveDeviceDataErr writes the device data file and returns the error (Forget Device needs it)
+func saveDeviceDataErr() error {
 	data, err := json.MarshalIndent(snapshotDeviceData(), "", "  ")
 	if err != nil {
-		slog.Error("Failed to serialize device data", "error", err)
-		return
+		return fmt.Errorf("serialize device data: %w", err)
 	}
 	if bytes.Equal(data, lastSaved) {
-		return
+		return nil
 	}
 	tmp := deviceDataFile + ".tmp"
 	if err := os.MkdirAll(filepath.Dir(deviceDataFile), 0o755); err != nil {
-		slog.Warn("Cannot save device data", "file", deviceDataFile, "error", err)
-		return
+		return err
 	}
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		slog.Warn("Cannot save device data", "file", deviceDataFile, "error", err)
-		return
+		return err
 	}
 	if err := os.Rename(tmp, deviceDataFile); err != nil {
-		slog.Warn("Cannot save device data", "file", deviceDataFile, "error", err)
-		return
+		return err
 	}
 	lastSaved = data
 	slog.Debug("Saved device data", "file", deviceDataFile, "bytes", len(data))
+	return nil
 }
 
 // loadDeviceData fills the caches from the file (before MQTT and CUL start)

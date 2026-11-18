@@ -28,7 +28,8 @@ var forgetCollectWait = 2 * time.Second
 
 func handleMQTTForget(client mqtt.Client, msg mqtt.Message) {
 	deviceID, ok := topicDeviceID(msg.Topic())
-	if !ok || !deviceIDPattern.MatchString(deviceID) || deviceID == "000000" || deviceID == gatewayAddrHex() {
+	deviceID = strings.ToUpper(deviceID)
+	if !ok || !deviceIDPattern.MatchString(deviceID) || deviceID == "000000" || deviceID == strings.ToUpper(gatewayAddrHex()) {
 		slog.Error("Forget device: invalid device address", "topic", msg.Topic())
 		return
 	}
@@ -37,7 +38,7 @@ func handleMQTTForget(client mqtt.Client, msg mqtt.Message) {
 		slog.Warn("Forget device: ignoring a retained command; publish it without retain", "device", deviceID)
 		return
 	}
-	go forgetDevice(strings.ToUpper(deviceID))
+	go forgetDevice(deviceID)
 }
 
 // forgetMu runs one forget at a time (they share the temporary discovery subscription)
@@ -49,9 +50,17 @@ func forgetDevice(deviceID string) {
 	defer forgetMu.Unlock()
 	slog.Warn("Forgetting device", "device", deviceID)
 	forgetDeviceCaches(deviceID)
-	saveDeviceData()
-	n := clearRetainedTopics(deviceID)
+	if err := saveDeviceDataErr(); err != nil {
+		// the device would come back on the next start: keep its MQTT topics so the button can be pressed again
+		slog.Error("Forget device: cannot save devices.json, press Forget Device again", "device", deviceID, "error", err)
+		return
+	}
+	n, complete := clearRetainedTopics(deviceID)
 	haDismiss(commandUnackedID(deviceID))
+	if !complete {
+		slog.Error("Forget device: not all retained topics could be cleared, press Forget Device again", "device", deviceID, "cleared_topics", n)
+		return
+	}
 	slog.Warn("Device forgotten", "device", deviceID, "cleared_topics", n)
 }
 
@@ -74,7 +83,7 @@ func forgetDeviceCaches(deviceID string) {
 	programmeMu.Unlock()
 	programmeStatusMu.Lock()
 	delete(programmeStatus, deviceID)
-	delete(programmeStatusGen, deviceID)
+	// programmeStatusGen is kept: a transfer still queued must not match a later one
 	programmeStatusMu.Unlock()
 	noDayGroupsMu.Lock()
 	delete(noDayGroups, deviceID)
@@ -117,19 +126,30 @@ func (a *AckTracker) Forget(deviceID string) {
 	delete(a.pendingSetTemp, deviceID)
 }
 
-// forgetTopicMatches reports whether a retained Home Assistant discovery topic belongs to the device
-// (object IDs <id>, <id>_battery, max_<id>_..., max_<id>_week_profile_monday)
+// forgetTopicMatches reports whether a retained Home Assistant discovery topic belongs to the device.
+// The bridge publishes homeassistant/<component>/<object id>/config; only the object ID is compared
+// (<id>, <id>_battery, max_<id>_..., max_<id>_week_profile_monday), so topics of other integrations
+// with a node ID level are not touched.
 func forgetTopicMatches(topic, deviceID string) bool {
-	if !strings.HasPrefix(topic, "homeassistant/") {
+	parts := strings.Split(topic, "/")
+	if len(parts) != 4 || parts[0] != "homeassistant" || parts[3] != "config" {
 		return false
 	}
-	for _, part := range strings.Split(topic, "/") {
-		p := strings.TrimPrefix(part, "max_")
-		if p == deviceID || strings.HasPrefix(p, deviceID+"_") {
-			return true
-		}
+	p := strings.TrimPrefix(parts[2], "max_")
+	return p == deviceID || strings.HasPrefix(p, deviceID+"_")
+}
+
+// forgetPublishTimeout bounds the wait for the broker to confirm a cleared topic
+var forgetPublishTimeout = 5 * time.Second
+
+// clearRetained publishes an empty retained message with QoS 1 and reports whether the broker confirmed it
+func clearRetained(topic string) bool {
+	t := mqttClient.Publish(topic, 1, true, "")
+	if !t.WaitTimeout(forgetPublishTimeout) || t.Error() != nil {
+		slog.Error("Forget device: clearing a topic failed", "topic", topic, "error", t.Error())
+		return false
 	}
-	return false
+	return true
 }
 
 // deviceStateTopics are the retained topics the bridge publishes under max/<id>/. They are cleared
@@ -150,14 +170,19 @@ func deviceStateTopics(deviceID string) []string {
 }
 
 // clearRetainedTopics clears the device's state topics, then subscribes for a moment to collect its
-// retained discovery topics and publishes an empty retained message to each; returns how many
-// discovery topics it cleared
-func clearRetainedTopics(deviceID string) int {
+// retained discovery topics and publishes an empty retained message to each. The scan is best
+// effort: the broker sends retained messages right after the subscription, and a topic it delivers
+// after forgetCollectWait is missed (press the button again). Returns how many discovery topics the
+// broker confirmed as cleared and whether every clear succeeded.
+func clearRetainedTopics(deviceID string) (int, bool) {
 	if mqttClient == nil {
-		return 0
+		return 0, false
 	}
+	complete := true
 	for _, topic := range deviceStateTopics(deviceID) {
-		mqttClient.Publish(topic, 0, true, "")
+		if !clearRetained(topic) {
+			complete = false
+		}
 	}
 	var mu sync.Mutex
 	found := map[string]bool{}
@@ -168,18 +193,33 @@ func clearRetainedTopics(deviceID string) int {
 			mu.Unlock()
 		}
 	}
-	if t := mqttClient.Subscribe(forgetDiscoveryFilter, 0, collect); t.Wait() && t.Error() != nil {
+	t := mqttClient.Subscribe(forgetDiscoveryFilter, 0, collect)
+	if t.Wait() && t.Error() != nil {
 		slog.Error("Forget device: subscribe failed", "device", deviceID, "error", t.Error())
-		return 0
+		return 0, false
+	}
+	if st, ok := t.(*mqtt.SubscribeToken); ok {
+		for _, qos := range st.Result() {
+			if qos == 0x80 {
+				slog.Error("Forget device: the broker denied the subscription", "device", deviceID, "filter", forgetDiscoveryFilter)
+				mqttClient.Unsubscribe(forgetDiscoveryFilter).Wait()
+				return 0, false
+			}
+		}
 	}
 	time.Sleep(forgetCollectWait)
 	mqttClient.Unsubscribe(forgetDiscoveryFilter).Wait()
 	mu.Lock()
 	defer mu.Unlock()
+	n := 0
 	for topic := range found {
-		mqttClient.Publish(topic, 0, true, "")
+		if clearRetained(topic) {
+			n++
+		} else {
+			complete = false
+		}
 	}
-	return len(found)
+	return n, complete
 }
 
 // forgetDiscoveryFilter: the bridge has no other subscription below homeassistant/
