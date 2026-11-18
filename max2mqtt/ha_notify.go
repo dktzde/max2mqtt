@@ -303,16 +303,17 @@ func supervisorDismiss(id string) {
 	callHAService("dismiss", map[string]string{"notification_id": id})
 }
 
-// haPending holds the latest call (create or dismiss) per notification ID that has not been sent
-// yet. Queueing never blocks the caller (the radio dispatcher); a newer call for the same ID
-// replaces an older one that is still waiting, so a dismiss cannot be overtaken by an earlier create.
+// haPending holds the calls per notification ID that have not been sent yet. Queueing never
+// blocks the caller (the radio dispatcher). A newer call replaces older waiting ones for the same
+// ID, so a dismiss cannot be overtaken by an earlier create; only a waiting dismiss stays ahead of
+// a new create, so the old notification is removed even if the create fails.
 var haPending = struct {
 	mu    sync.Mutex
-	calls map[string]map[string]string // notification ID → service ("create"/"dismiss") and data
+	calls map[string][]map[string]string // notification ID → calls: service ("create"/"dismiss") and data
 	order []string
 	wake  chan struct{}
 	once  sync.Once
-}{calls: map[string]map[string]string{}, wake: make(chan struct{}, 1)}
+}{calls: map[string][]map[string]string{}, wake: make(chan struct{}, 1)}
 
 func callHAService(service string, data map[string]string) {
 	token := os.Getenv("SUPERVISOR_TOKEN")
@@ -326,16 +327,26 @@ func callHAService(service string, data map[string]string) {
 		call[k] = v
 	}
 	haPending.once.Do(func() { go haCallWorker(token) })
-	haPending.mu.Lock()
-	if _, waiting := haPending.calls[id]; !waiting {
-		haPending.order = append(haPending.order, id)
-	}
-	haPending.calls[id] = call
-	haPending.mu.Unlock()
+	enqueueHACall(id, call)
 	select {
 	case haPending.wake <- struct{}{}:
 	default:
 	}
+}
+
+// enqueueHACall adds a call to haPending (see there)
+func enqueueHACall(id string, call map[string]string) {
+	haPending.mu.Lock()
+	waiting, ok := haPending.calls[id]
+	if !ok {
+		haPending.order = append(haPending.order, id)
+	}
+	if call["service"] == "create" && len(waiting) > 0 && waiting[0]["service"] == "dismiss" {
+		haPending.calls[id] = []map[string]string{waiting[0], call}
+	} else {
+		haPending.calls[id] = []map[string]string{call}
+	}
+	haPending.mu.Unlock()
 }
 
 // haCallWorker sends the waiting calls one after another
@@ -349,10 +360,12 @@ func haCallWorker(token string) {
 			}
 			id := haPending.order[0]
 			haPending.order = haPending.order[1:]
-			call := haPending.calls[id]
+			calls := haPending.calls[id]
 			delete(haPending.calls, id)
 			haPending.mu.Unlock()
-			postHAService(token, call)
+			for _, call := range calls {
+				postHAService(token, call)
+			}
 		}
 	}
 }
@@ -368,7 +381,7 @@ func postHAService(token string, call map[string]string) {
 	body, _ := json.Marshal(data)
 	req, err := http.NewRequest(http.MethodPost, "http://supervisor/core/api/services/persistent_notification/"+service, bytes.NewReader(body))
 	if err != nil {
-		slog.Warn("Home Assistant notification failed", "error", err)
+		slog.Warn("Home Assistant notification failed", "reason", "request")
 		return
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -376,11 +389,12 @@ func postHAService(token string, call map[string]string) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		slog.Warn("Home Assistant notification failed", "error", err)
+		// no raw error: it can contain the resolved address of the Supervisor
+		slog.Warn("Home Assistant notification failed", "reason", "connection")
 		return
 	}
 	resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		slog.Warn("Home Assistant notification failed", "status", resp.Status)
+		slog.Warn("Home Assistant notification failed", "status", resp.StatusCode)
 	}
 }

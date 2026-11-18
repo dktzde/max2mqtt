@@ -209,3 +209,42 @@ func TestDeviceNameIsEscapedInTheMessage(t *testing.T) {
 		t.Errorf("message: %q", n.message)
 	}
 }
+
+func TestEnqueueHACallKeepsPendingDismiss(t *testing.T) {
+	haPending.mu.Lock()
+	saved, savedOrder := haPending.calls, haPending.order
+	haPending.calls, haPending.order = map[string][]map[string]string{}, nil
+	haPending.mu.Unlock()
+	t.Cleanup(func() {
+		haPending.mu.Lock()
+		haPending.calls, haPending.order = saved, savedOrder
+		haPending.mu.Unlock()
+	})
+	services := func(id string) []string {
+		haPending.mu.Lock()
+		defer haPending.mu.Unlock()
+		var out []string
+		for _, c := range haPending.calls[id] {
+			out = append(out, c["service"])
+		}
+		return out
+	}
+	id := "max2mqtt_test"
+	enqueueHACall(id, map[string]string{"service": "create"})
+	enqueueHACall(id, map[string]string{"service": "dismiss"})
+	if got := services(id); len(got) != 1 || got[0] != "dismiss" {
+		t.Fatalf("dismiss should replace create, got %v", got)
+	}
+	enqueueHACall(id, map[string]string{"service": "create", "message": "a"})
+	enqueueHACall(id, map[string]string{"service": "create", "message": "b"})
+	got := services(id)
+	if len(got) != 2 || got[0] != "dismiss" || got[1] != "create" {
+		t.Fatalf("waiting dismiss should stay ahead of the latest create, got %v", got)
+	}
+	haPending.mu.Lock()
+	msg, n := haPending.calls[id][1]["message"], len(haPending.order)
+	haPending.mu.Unlock()
+	if msg != "b" || n != 1 {
+		t.Fatalf("latest create should win once in order, got message %q, order %d", msg, n)
+	}
+}
