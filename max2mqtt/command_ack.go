@@ -42,6 +42,11 @@ func commandUnackedID(deviceID string) string {
 var (
 	commandUnackedMu       sync.Mutex
 	commandUnackedNotified = map[string]bool{}
+	// commandAckSeen: devices that acknowledged a command since the start. The notification of an
+	// unacknowledged command outlives a restart of the add-on, commandUnackedNotified does not; so
+	// the first Ack of each device after the start removes it in any case. Seen 2026-11-18: after the
+	// update to 1.8.0 a notification stayed although the next command was acknowledged.
+	commandAckSeen = map[string]bool{}
 )
 
 // commandAckCallbacks returns what happens after the device acknowledged a command, after the
@@ -94,10 +99,15 @@ func commandUnacked(deviceID, description string, f commandFailure) {
 func commandAcked(deviceID string) {
 	commandUnackedMu.Lock()
 	notified := commandUnackedNotified[deviceID]
+	firstAck := !commandAckSeen[deviceID]
 	delete(commandUnackedNotified, deviceID)
+	commandAckSeen[deviceID] = true
 	commandUnackedMu.Unlock()
 	if notified {
 		slog.Info("Device acknowledges commands again", "device", deviceID)
+	}
+	if notified || firstAck {
+		// first Ack since the start: a notification from before a restart may still be shown
 		haDismiss(commandUnackedID(deviceID))
 	}
 }
