@@ -328,6 +328,7 @@ data:
 - **Group ID**: 0–255 (`0x22` / remove at 0)
 - **Disassociate Partner**: text `PARTNER` or `PARTNER:type` (`0x21`)
 - **Factory Reset**: button (`0xF0`) — destructive
+- **Forget Device**: button → `max/<id>/forget/set` (any payload, not retained). The bridge removes the device from its memory and from `devices.json` and clears its retained topics (`max/<id>/state`, `attributes`, `config`, `valve`, `programme`, `week_profile/…` and every Home Assistant discovery topic of the device), so its entities disappear from Home Assistant and do not come back after a restart. Nothing is sent to the device: a device that still talks to the gateway, or is paired again, is created again. To remove a real device for good, press Factory Reset first (and Disassociate it at its link partners). For a device without entities (e.g. a phantom from garbled lines): `mosquitto_pub -t max/<id>/forget/set -m 1`. The log shows "Device forgotten" with the number of cleared discovery topics; if it shows an error instead (devices.json not writable, a topic not confirmed by the broker), press the button again
 - **Week Profile Monday … Sunday**: one text entity per day in FHEM syntax, see [Week profile](#week-profile-0x10)
 - **Bridge Pairing**: button on the bridge device → `max/bridge/pair`
 

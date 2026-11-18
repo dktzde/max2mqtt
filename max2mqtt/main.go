@@ -248,6 +248,7 @@ func setupMQTT() {
 		c.Subscribe("max/+/associate", 0, handleMQTTAssociate)
 		c.Subscribe("max/+/disassociate/set", 0, handleMQTTDisassociate)
 		c.Subscribe("max/+/factory_reset/set", 0, handleMQTTFactoryReset)
+		c.Subscribe("max/+/forget/set", 0, handleMQTTForget)
 		c.Subscribe("max/+/week_profile/set", 0, handleMQTTWeekProfile)
 		c.Subscribe("max/+/config/import", 0, handleMQTTConfigImport)
 		c.Subscribe("max/+/config/set", 0, handleMQTTConfigSet)

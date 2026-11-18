@@ -273,6 +273,8 @@ func publishConfigEntities(srcAddr string) {
 	publishNumberDiscovery(srcAddr, "group_id", "Group ID", "mdi:group", "", 0, 255, 1, "{{ value_json.group_id }}")
 	publishButtonDiscovery(srcAddr, "factory_reset", "Factory Reset", "mdi:factory",
 		fmt.Sprintf("max/%s/factory_reset/set", srcAddr))
+	publishButtonDiscovery(srcAddr, "forget", "Forget Device", "mdi:delete-forever",
+		fmt.Sprintf("max/%s/forget/set", srcAddr))
 	// Disassociate needs partner address: publish PARTNER or PARTNER:type
 	disTopic := fmt.Sprintf("homeassistant/text/%s_disassociate/config", "max_"+srcAddr)
 	disPayload := map[string]interface{}{

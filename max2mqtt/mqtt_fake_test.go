@@ -2,6 +2,7 @@ package main
 
 import (
 	"sync"
+	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
@@ -12,6 +13,8 @@ type fakeToken struct{ mqtt.Token }
 
 func (fakeToken) Wait() bool   { return true }
 func (fakeToken) Error() error { return nil }
+
+func (fakeToken) WaitTimeout(time.Duration) bool { return true }
 
 type fakeMQTT struct {
 	mqtt.Client

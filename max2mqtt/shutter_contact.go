@@ -122,4 +122,6 @@ func sendShutterDiscovery(srcAddr string) {
 		s.cfg["device"] = deviceInfo
 		publishDiscovery(fmt.Sprintf("homeassistant/binary_sensor/%s_%s/config", deviceID, s.suffix), s.cfg)
 	}
+	publishButtonDiscovery(srcAddr, "forget", "Forget Device", "mdi:delete-forever",
+		fmt.Sprintf("max/%s/forget/set", srcAddr))
 }

@@ -1,6 +1,7 @@
 ## Unreleased
 
 - **Notification of an unacknowledged command removed after a restart too:** the first acknowledged command of each device after the start of the add-on removes `max2mqtt_command_unacked_<id>`. Before, the bridge forgot on a restart that it had shown the notification, and it stayed until dismissed by hand. Found on 2026-11-18 after the update to 1.8.0
+- **Forget a device:** new button "Forget Device" (`max/<id>/forget/set`): the bridge removes the device from its memory and from `devices.json` and clears its retained MQTT topics, including all Home Assistant discovery topics, so it does not come back after a restart. Nothing is sent to the device (Factory Reset does that). Asked for on 2026-11-18 to remove the phantom devices that garbled CUL lines had created
 
 ## 1.8.0
 
