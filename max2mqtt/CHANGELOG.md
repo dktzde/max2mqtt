@@ -1,3 +1,7 @@
+## Unreleased
+
+- **Notification of an unacknowledged command removed after a restart too:** the first acknowledged command of each device after the start of the add-on removes `max2mqtt_command_unacked_<id>`. Before, the bridge forgot on a restart that it had shown the notification, and it stayed until dismissed by hand. Found on 2026-11-18 after the update to 1.8.0
+
 ## 1.8.0
 
 <sub>2026-11-17</sub>

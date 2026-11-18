@@ -91,7 +91,7 @@ After the last try without an Ack:
 - a setpoint, mode or preset: Home Assistant shows the state from before the command again (or the state the device reported in the meantime);
 - a config change: the previous values come back at once (see `config_status` below);
 - the same happens when a command is dropped without being sent because the duty cycle credits did not suffice within `command_timeout`;
-- the add-on shows the persistent notification `max2mqtt_command_unacked_<id>` in Home Assistant; it disappears after the next acknowledged command to that device.
+- the add-on shows the persistent notification `max2mqtt_command_unacked_<id>` in Home Assistant; it disappears after the next acknowledged command to that device, also after a restart of the add-on (the first acknowledged command of each device after the start removes it).
 
 **Why it failed** is in the notification title, the log and the attributes `config_status`/`command_status` (`reason`, `detail`):
 
