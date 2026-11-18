@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
@@ -306,6 +307,9 @@ func publishConfigEntities(srcAddr string) {
 // was already cleared in this run, so it is not cleared again on every telegram
 var displayModeCleared sync.Map
 
+// displayClearTimeout bounds the wait for the broker to confirm a cleared Display Mode discovery
+var displayClearTimeout = 10 * time.Second
+
 // displayModeTopic is the discovery topic of the Display Mode select of a device
 func displayModeTopic(srcAddr string) string {
 	return fmt.Sprintf("homeassistant/select/max_%s_display_mode/config", srcAddr)
@@ -337,7 +341,14 @@ func publishDisplayModeDiscovery(srcAddr string) {
 			[]string{"Setpoint", "Actual"}, "{{ value_json.display_mode }}")
 	case isRadiator:
 		if _, done := displayModeCleared.LoadOrStore(srcAddr, true); !done {
-			mqttClient.Publish(displayModeTopic(srcAddr), 1, true, "")
+			t := mqttClient.Publish(displayModeTopic(srcAddr), 1, true, "")
+			// wait off the RX path; a failed clear is tried again on the next telegram
+			go func() {
+				if !t.WaitTimeout(displayClearTimeout) || t.Error() != nil {
+					slog.Warn("Clearing the Display Mode discovery failed, trying again later", "device", srcAddr, "error", t.Error())
+					displayModeCleared.Delete(srcAddr)
+				}
+			}()
 		}
 	}
 }

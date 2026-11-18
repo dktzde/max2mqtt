@@ -1,7 +1,11 @@
 package main
 
 import (
+	"sync"
 	"testing"
+	"time"
+
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
 const (
@@ -9,6 +13,15 @@ const (
 	displayWall     = "0D1A02"
 	displayUnknown  = "0D1A03"
 )
+
+// resetDisplayTest gives a test the shared fake state and an empty Display Mode marker
+func resetDisplayTest(t *testing.T) *fakeMQTT {
+	t.Helper()
+	fc := resetTestState()
+	displayModeCleared = sync.Map{}
+	t.Cleanup(func() { displayModeCleared = sync.Map{} })
+	return fc
+}
 
 // published reports whether a topic was published and its last payload
 func (f *fakeMQTT) published(topic string) (string, bool) {
@@ -19,7 +32,7 @@ func (f *fakeMQTT) published(topic string) (string, bool) {
 }
 
 func TestDisplayModeOfferedForWallThermostatsOnly(t *testing.T) {
-	fc := resetTestState()
+	fc := resetDisplayTest(t)
 	markDeviceType(displayRadiator, 0x60)
 	markDeviceType(displayWall, 0x70)
 
@@ -39,7 +52,7 @@ func TestDisplayModeOfferedForWallThermostatsOnly(t *testing.T) {
 }
 
 func TestDisplayModeClearedOncePerRun(t *testing.T) {
-	fc := resetTestState()
+	fc := resetDisplayTest(t)
 	markDeviceType(displayRadiator, 0x60)
 	publishConfigEntities(displayRadiator)
 
@@ -54,7 +67,7 @@ func TestDisplayModeClearedOncePerRun(t *testing.T) {
 }
 
 func TestDisplayModeCommandIgnoredForRadiatorThermostat(t *testing.T) {
-	resetTestState()
+	resetDisplayTest(t)
 	markDeviceType(displayRadiator, 0x60)
 
 	handleMQTTDisplayMode(nil, fakeMessage{topic: "max/" + displayRadiator + "/display_mode/set", payload: "Actual"})
@@ -66,5 +79,37 @@ func TestDisplayModeCommandIgnoredForRadiatorThermostat(t *testing.T) {
 	case line := <-serialWrite:
 		t.Fatalf("telegram sent to a radiator thermostat: %q", line)
 	default:
+	}
+}
+
+// failingMQTT is a fake MQTT client whose publishes are never confirmed
+type failingMQTT struct{ *fakeMQTT }
+
+type failedToken struct{ mqtt.Token }
+
+func (failedToken) WaitTimeout(time.Duration) bool { return false }
+func (failedToken) Error() error                   { return nil }
+
+func (f failingMQTT) Publish(topic string, qos byte, retained bool, payload interface{}) mqtt.Token {
+	f.fakeMQTT.Publish(topic, qos, retained, payload)
+	return failedToken{}
+}
+
+func TestDisplayModeClearRetriedAfterFailure(t *testing.T) {
+	fc := resetDisplayTest(t)
+	mqttClient = failingMQTT{fc}
+	markDeviceType(displayRadiator, 0x60)
+
+	publishConfigEntities(displayRadiator)
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if _, marked := displayModeCleared.Load(displayRadiator); !marked {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("failed clear still marked as done, it would never be tried again")
+		}
+		time.Sleep(5 * time.Millisecond)
 	}
 }
