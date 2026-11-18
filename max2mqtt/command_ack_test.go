@@ -46,6 +46,7 @@ func startCommandTest(t *testing.T, ackTimeout time.Duration) (*fakeMQTT, <-chan
 	initAckTracker()
 	commandUnackedMu.Lock()
 	commandUnackedNotified = map[string]bool{}
+	commandAckSeen = map[string]bool{}
 	commandUnackedMu.Unlock()
 	touchLastSeen(cmdAckDevice)
 	start()
@@ -276,6 +277,7 @@ func TestDroppedBoostRestoresPreviousState(t *testing.T) {
 	initAckTracker()
 	commandUnackedMu.Lock()
 	commandUnackedNotified = map[string]bool{}
+	commandAckSeen = map[string]bool{}
 	commandUnackedMu.Unlock()
 	touchLastSeen(cmdAckDevice)
 	fc := mqttClient.(*fakeMQTT)
