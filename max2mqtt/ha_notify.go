@@ -3,10 +3,13 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -59,9 +62,12 @@ func (b *bulkWaitTracker) waiting(cmd QueuedCommand) {
 	b.notified[cmd.DeviceID] = true
 	b.mu.Unlock()
 	slog.Warn("TxMgr: Week profile still waiting for duty cycle credits", "device", cmd.DeviceID, "since", cmd.CreatedAt.Format(time.TimeOnly))
-	haNotify(bulkNotificationID(cmd.DeviceID), "MAX! week profile waiting",
-		fmt.Sprintf("The week profile for MAX! device %s has been waiting for duty cycle credits since %s. It is not discarded and is sent as soon as there are enough credits; this notification disappears then.",
-			cmd.DeviceID, cmd.CreatedAt.Format("15:04")))
+	since := cmd.CreatedAt.Format("15:04")
+	notifyDevice(bulkNotificationID(cmd.DeviceID), cmd.DeviceID, func(name, label string) (string, string) {
+		return withDeviceName("MAX! week profile waiting", name),
+			fmt.Sprintf("The week profile for MAX! device %s has been waiting for duty cycle credits since %s. It is not discarded and is sent as soon as there are enough credits; this notification disappears then.",
+				label, since)
+	})
 }
 
 // done is called when a bulk command was sent; the last one of a device removes the notification
@@ -84,8 +90,206 @@ func (b *bulkWaitTracker) done(cmd QueuedCommand) {
 	b.mu.Unlock()
 
 	if finished && wasNotified {
-		haDismiss(bulkNotificationID(cmd.DeviceID))
+		dismissNotification(bulkNotificationID(cmd.DeviceID))
 	}
+}
+
+// runNotify runs the name lookup and the notification about a device. It runs in the background,
+// so a slow Home Assistant never holds up the dispatcher; tests replace it to run at once.
+var runNotify = func(f func()) { go f() }
+
+// notifyDevice creates a notification about one MAX! device. text gets the name Home Assistant
+// shows for the device ("" when unknown) and the label "Name (0A1B2C)" (only the address when the
+// name is unknown), so the user sees which thermostat is meant and not only its radio address.
+//
+// The lookup can take a while; a dismiss of the same notification in the meantime (dismissNotification)
+// cancels the create, so a condition that has cleared is not shown afterwards.
+func notifyDevice(id, deviceID string, text func(name, label string) (title, message string)) {
+	notify, fetch := haNotify, haDeviceNames
+	gen := notificationGenerations.next(id)
+	runNotify(func() {
+		name := deviceName(fetch, deviceID)
+		title, message := text(name, deviceLabel(name, deviceID))
+		notificationGenerations.mu.Lock()
+		defer notificationGenerations.mu.Unlock()
+		if notificationGenerations.byID[id] != gen {
+			return // dismissed or replaced while the name was looked up
+		}
+		notify(id, title, message)
+	})
+}
+
+// notificationGenerations counts the creates and dismisses per notification ID
+var notificationGenerations = &notificationGens{byID: map[string]uint64{}}
+
+type notificationGens struct {
+	mu   sync.Mutex
+	byID map[string]uint64
+}
+
+func (g *notificationGens) next(id string) uint64 {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.byID[id]++
+	return g.byID[id]
+}
+
+// dismissNotification removes a notification and cancels a create of it that still waits for the
+// device name. Use it for notifications created by notifyDevice.
+func dismissNotification(id string) {
+	notificationGenerations.mu.Lock()
+	defer notificationGenerations.mu.Unlock()
+	notificationGenerations.byID[id]++
+	haDismiss(id)
+}
+
+// escapeMarkdown keeps a device name literal in the notification text, which Home Assistant
+// renders as Markdown
+func escapeMarkdown(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if strings.ContainsRune("\\`*_{}[]()#+-.!|<>~", r) {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+// withDeviceName appends the device name to a notification title, if it is known
+func withDeviceName(title, name string) string {
+	if name == "" {
+		return title
+	}
+	return title + ": " + name
+}
+
+// deviceLabel is "Name (0A1B2C)" with the name escaped for Markdown, or only the address when Home Assistant has no other name
+func deviceLabel(name, deviceID string) string {
+	if name == "" || strings.EqualFold(name, deviceID) {
+		return deviceID
+	}
+	return escapeMarkdown(name) + " (" + deviceID + ")"
+}
+
+// haDeviceNames returns the names Home Assistant shows for the MAX! devices, keyed by radio
+// address in upper case. A variable so tests can replace it.
+var haDeviceNames = supervisorDeviceNames
+
+const (
+	// deviceNamesMaxAge: the names are fetched again after this long, so a renamed entity shows up
+	deviceNamesMaxAge = 10 * time.Minute
+	// deviceNamesRetry: an address missing from the names is looked up again after this long at the earliest
+	deviceNamesRetry = time.Minute
+)
+
+var deviceNames struct {
+	mu      sync.Mutex
+	byID    map[string]string
+	fetched time.Time
+	// attempted: the last lookup, also a failed one; no new lookup within deviceNamesRetry
+	attempted time.Time
+}
+
+// deviceName returns the name Home Assistant shows for the device, "" when unknown. The names are
+// cached; a failed lookup only means the notification shows the address alone.
+func deviceName(fetch func() (map[string]string, error), deviceID string) string {
+	id := strings.ToUpper(deviceID)
+	deviceNames.mu.Lock()
+	defer deviceNames.mu.Unlock()
+	name, ok := deviceNames.byID[id]
+	age := time.Since(deviceNames.fetched)
+	due := deviceNames.fetched.IsZero() || age >= deviceNamesMaxAge || (!ok && age >= deviceNamesRetry)
+	if due && (deviceNames.attempted.IsZero() || time.Since(deviceNames.attempted) >= deviceNamesRetry) {
+		deviceNames.attempted = time.Now()
+		names, err := fetch()
+		if err != nil {
+			// not the error itself: it may contain an IP address
+			var se templateStatusError
+			if errors.As(err, &se) {
+				slog.Debug("Device names from Home Assistant not available", "status", int(se))
+			} else {
+				slog.Debug("Device names from Home Assistant not available")
+			}
+			return name // the last names found stay
+		}
+		deviceNames.byID = names
+		deviceNames.fetched = time.Now()
+		name = names[id]
+	}
+	return name
+}
+
+// deviceNamesTemplate collects the names of the MAX! devices in Home Assistant: the name of the
+// climate entity with the attribute device_rf_address, otherwise the name the user gave the
+// device, otherwise the shortest entity name of the device. A name that is just the address counts as none.
+const deviceNamesTemplate = `{%- set ns = namespace(m={}, best='') -%}
+{%- for s in states.climate if s.attributes.device_rf_address is defined -%}
+{%- set rf = s.attributes.device_rf_address | string | upper -%}
+{%- set n = s.name | string | trim -%}
+{%- if n and n | upper != rf -%}{%- set ns.m = dict(ns.m, **{rf: n}) -%}{%- endif -%}
+{%- endfor -%}
+{%- for e in integration_entities('mqtt') -%}
+{%- set d = device_id(e) -%}
+{%- if d -%}{%- for i in device_attr(d, 'identifiers') or [] -%}
+{%- set k = i | list | last | string -%}
+{%- set rf = k[4:] | upper -%}
+{%- if k.startswith('max_') and rf not in ns.m -%}
+{%- set ns.best = (device_attr(d, 'name_by_user') or '') | trim -%}
+{%- if ns.best | upper == rf -%}{%- set ns.best = '' -%}{%- endif -%}
+{%- if not ns.best -%}{%- for x in device_entities(d) -%}
+{%- set n = state_attr(x, 'friendly_name') | string | trim -%}
+{%- if n and n != 'None' and n | upper != rf and (not ns.best or n | length < ns.best | length) -%}{%- set ns.best = n -%}{%- endif -%}
+{%- endfor -%}{%- endif -%}
+{%- if ns.best -%}{%- set ns.m = dict(ns.m, **{rf: ns.best}) -%}{%- endif -%}
+{%- endif -%}{%- endfor -%}{%- endif -%}
+{%- endfor -%}
+{{- ns.m | to_json -}}`
+
+// supervisorDeviceNames renders deviceNamesTemplate through the Home Assistant Core API of the
+// Supervisor. Without SUPERVISOR_TOKEN (bridge outside Home Assistant) there are no names.
+func supervisorDeviceNames() (map[string]string, error) {
+	token := os.Getenv("SUPERVISOR_TOKEN")
+	if token == "" {
+		return map[string]string{}, nil
+	}
+	body, _ := json.Marshal(map[string]string{"template": deviceNamesTemplate})
+	req, err := http.NewRequest(http.MethodPost, "http://supervisor/core/api/template", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		return nil, templateStatusError(resp.StatusCode)
+	}
+	return parseDeviceNames(resp.Body)
+}
+
+// templateStatusError is an HTTP status of the template API other than success
+type templateStatusError int
+
+func (e templateStatusError) Error() string { return fmt.Sprintf("template API: HTTP %d", int(e)) }
+
+// parseDeviceNames reads the rendered template, a JSON object of radio address → name
+func parseDeviceNames(r io.Reader) (map[string]string, error) {
+	var raw map[string]string
+	if err := json.NewDecoder(r).Decode(&raw); err != nil {
+		return nil, err
+	}
+	names := make(map[string]string, len(raw))
+	for id, name := range raw {
+		if name = strings.TrimSpace(name); name != "" {
+			names[strings.ToUpper(id)] = name
+		}
+	}
+	return names, nil
 }
 
 // supervisorNotify creates a persistent notification through the Home Assistant Core API of the
@@ -99,30 +303,98 @@ func supervisorDismiss(id string) {
 	callHAService("dismiss", map[string]string{"notification_id": id})
 }
 
+// haPending holds the calls per notification ID that have not been sent yet. Queueing never
+// blocks the caller (the radio dispatcher). A newer call replaces older waiting ones for the same
+// ID, so a dismiss cannot be overtaken by an earlier create; only a waiting dismiss stays ahead of
+// a new create, so the old notification is removed even if the create fails.
+var haPending = struct {
+	mu    sync.Mutex
+	calls map[string][]map[string]string // notification ID → calls: service ("create"/"dismiss") and data
+	order []string
+	wake  chan struct{}
+	once  sync.Once
+}{calls: map[string][]map[string]string{}, wake: make(chan struct{}, 1)}
+
 func callHAService(service string, data map[string]string) {
 	token := os.Getenv("SUPERVISOR_TOKEN")
 	if token == "" {
 		slog.Debug("No SUPERVISOR_TOKEN, skipping Home Assistant notification", "service", service)
 		return
 	}
-	go func() {
-		body, _ := json.Marshal(data)
-		req, err := http.NewRequest(http.MethodPost, "http://supervisor/core/api/services/persistent_notification/"+service, bytes.NewReader(body))
-		if err != nil {
-			slog.Warn("Home Assistant notification failed", "error", err)
-			return
+	id := data["notification_id"]
+	call := map[string]string{"service": service}
+	for k, v := range data {
+		call[k] = v
+	}
+	haPending.once.Do(func() { go haCallWorker(token) })
+	enqueueHACall(id, call)
+	select {
+	case haPending.wake <- struct{}{}:
+	default:
+	}
+}
+
+// enqueueHACall adds a call to haPending (see there)
+func enqueueHACall(id string, call map[string]string) {
+	haPending.mu.Lock()
+	waiting, ok := haPending.calls[id]
+	if !ok {
+		haPending.order = append(haPending.order, id)
+	}
+	if call["service"] == "create" && len(waiting) > 0 && waiting[0]["service"] == "dismiss" {
+		haPending.calls[id] = []map[string]string{waiting[0], call}
+	} else {
+		haPending.calls[id] = []map[string]string{call}
+	}
+	haPending.mu.Unlock()
+}
+
+// haCallWorker sends the waiting calls one after another
+func haCallWorker(token string) {
+	for range haPending.wake {
+		for {
+			haPending.mu.Lock()
+			if len(haPending.order) == 0 {
+				haPending.mu.Unlock()
+				break
+			}
+			id := haPending.order[0]
+			haPending.order = haPending.order[1:]
+			calls := haPending.calls[id]
+			delete(haPending.calls, id)
+			haPending.mu.Unlock()
+			for _, call := range calls {
+				postHAService(token, call)
+			}
 		}
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("Content-Type", "application/json")
-		client := &http.Client{Timeout: 10 * time.Second}
-		resp, err := client.Do(req)
-		if err != nil {
-			slog.Warn("Home Assistant notification failed", "error", err)
-			return
+	}
+}
+
+func postHAService(token string, call map[string]string) {
+	service := call["service"]
+	data := map[string]string{}
+	for k, v := range call {
+		if k != "service" {
+			data[k] = v
 		}
-		resp.Body.Close()
-		if resp.StatusCode >= 300 {
-			slog.Warn("Home Assistant notification failed", "status", resp.Status)
-		}
-	}()
+	}
+	body, _ := json.Marshal(data)
+	req, err := http.NewRequest(http.MethodPost, "http://supervisor/core/api/services/persistent_notification/"+service, bytes.NewReader(body))
+	if err != nil {
+		slog.Warn("Home Assistant notification failed", "reason", "request")
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		// no raw error: it can contain the resolved address of the Supervisor
+		slog.Warn("Home Assistant notification failed", "reason", "connection")
+		return
+	}
+	resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		slog.Warn("Home Assistant notification failed", "status", resp.StatusCode)
+	}
 }

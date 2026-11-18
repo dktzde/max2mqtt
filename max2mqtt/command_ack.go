@@ -87,12 +87,17 @@ func commandAckCallbacks(deviceID string, typeByte byte, cnt int, description st
 // commandUnacked tells Home Assistant that a command did not reach the device and why: the device
 // did not answer, or the bridge could not send it (duty cycle, CUL)
 func commandUnacked(deviceID, description string, f commandFailure) {
+	// the flag and the notification are reserved under the same lock as commandAcked's dismiss, so an
+	// earlier Ack cannot cancel a later warning; the name lookup and HTTP call run in the background
 	commandUnackedMu.Lock()
+	defer commandUnackedMu.Unlock()
 	commandUnackedNotified[deviceID] = true
-	commandUnackedMu.Unlock()
-	haNotify(commandUnackedID(deviceID), f.title(),
-		fmt.Sprintf("MAX! device %s, command \"%s\" (%s): %s.\n\n%s Home Assistant shows the last state the device reported. This notification disappears after the next acknowledged command to this device.",
-			deviceID, description, time.Now().Format("15:04"), f.summary(), f.hint()))
+	at := time.Now().Format("15:04")
+	notifyDevice(commandUnackedID(deviceID), deviceID, func(name, label string) (string, string) {
+		return withDeviceName(f.title(), name),
+			fmt.Sprintf("MAX! device %s, command \"%s\" (%s): %s.\n\n%s Home Assistant shows the last state the device reported. This notification disappears after the next acknowledged command to this device.",
+				label, description, at, f.summary(), f.hint())
+	})
 }
 
 // commandAcked removes the notification of an earlier unacknowledged command to the device
@@ -102,12 +107,12 @@ func commandAcked(deviceID string) {
 	firstAck := !commandAckSeen[deviceID]
 	delete(commandUnackedNotified, deviceID)
 	commandAckSeen[deviceID] = true
+	if notified || firstAck {
+		// first Ack since the start: a notification from before a restart may still be shown
+		dismissNotification(commandUnackedID(deviceID))
+	}
 	commandUnackedMu.Unlock()
 	if notified {
 		slog.Info("Device acknowledges commands again", "device", deviceID)
-	}
-	if notified || firstAck {
-		// first Ack since the start: a notification from before a restart may still be shown
-		haDismiss(commandUnackedID(deviceID))
 	}
 }
