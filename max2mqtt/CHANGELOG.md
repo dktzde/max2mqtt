@@ -1,4 +1,8 @@
-## Unreleased
+## 1.9.1
+
+<sub>2026-11-18</sub>
+
+- Not tested on a device yet
 
 - **Notifications name the device:** the notifications about a device (command not acknowledged or not sent, week profile not acknowledged, week profile waiting) show the name Home Assistant gives it, with the radio address in brackets, e.g. "MAX! device Living room (0A1B2C)", and the name at the end of the title. The bridge reads the names through the Home Assistant template API: the entity with the attribute `device_rf_address` (thermostats), otherwise the device name set by the user, otherwise the shortest entity name of the device. It keeps them for 10 minutes; without a name the notification shows the address as before. Asked for on 2026-11-18: the address alone did not say which thermostat was meant
 
