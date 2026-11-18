@@ -1394,6 +1394,11 @@ func handleMQTTDisplayMode(client mqtt.Client, msg mqtt.Message) {
 	if !ok {
 		return
 	}
+	if isRadiatorOnly(deviceID) {
+		// 0x82 works on wall thermostats only; a radiator thermostat would not change its display
+		slog.Warn("Display mode ignored: only wall thermostats have it", "device", deviceID)
+		return
+	}
 	payload := string(msg.Payload())
 	showActual := strings.EqualFold(payload, "Actual")
 	mode := "Setpoint"

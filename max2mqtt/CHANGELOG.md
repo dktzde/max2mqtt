@@ -1,3 +1,11 @@
+## 1.9.2
+
+<sub>2026-11-18</sub>
+
+- Not tested on a device yet
+
+- **Display Mode only for wall thermostats:** the select "Display Mode" (Setpoint/Actual, command `0x82`) is offered only for wall thermostats. Radiator thermostats always show the setpoint; the command does nothing there (Cube protocol, S-Message command 82: "Command only works on wall thermostats"). Earlier versions offered it for every device; the bridge now removes it from radiator thermostats (clears the retained discovery once per start) and ignores `display_mode/set` for them. A device whose type is not known yet keeps its entity until the type is known. Found on 2026-11-18 by the maintainer: the original MAX! software has this setting only for wall thermostats
+
 ## 1.9.1
 
 <sub>2026-11-18</sub>

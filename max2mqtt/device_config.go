@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
@@ -268,8 +269,7 @@ func publishConfigEntities(srcAddr string) {
 	publishNumberDiscovery(srcAddr, "measurement_offset", "Measurement Offset", "mdi:plus-minus", "°C", -3.5, 3.5, 0.1, knownTemplate("measurement_offset", "temps_known"))
 	publishNumberDiscovery(srcAddr, "window_open_temp", "Window Open Temperature", "mdi:window-open", "°C", 4.5, 30.5, 0.5, knownTemplate("window_open_temp", "temps_known"))
 	publishNumberDiscovery(srcAddr, "window_open_duration", "Window Open Duration", "mdi:timer", "min", 0, 60, 5, knownTemplate("window_open_duration", "temps_known"))
-	publishSelectDiscovery(srcAddr, "display_mode", "Display Mode", "mdi:thermometer-lines",
-		[]string{"Setpoint", "Actual"}, "{{ value_json.display_mode }}")
+	publishDisplayModeDiscovery(srcAddr)
 	publishNumberDiscovery(srcAddr, "group_id", "Group ID", "mdi:group", "", 0, 255, 1, "{{ value_json.group_id }}")
 	publishButtonDiscovery(srcAddr, "factory_reset", "Factory Reset", "mdi:factory",
 		fmt.Sprintf("max/%s/factory_reset/set", srcAddr))
@@ -300,6 +300,56 @@ func publishConfigEntities(srcAddr string) {
 		publishNumberDiscovery(srcAddr, "decalc_hour", "Decalcification Hour", "mdi:clock", "h", 0, 23, 1, knownTemplate("decalc_hour", "valve_known"))
 		publishNumberDiscovery(srcAddr, "max_valve_setting", "Max Valve Setting", "mdi:valve", "%", 0, 100, 1, knownTemplate("max_valve_setting", "valve_known"))
 		publishNumberDiscovery(srcAddr, "valve_offset", "Valve Offset", "mdi:valve", "%", 0, 100, 1, knownTemplate("valve_offset", "valve_known"))
+	}
+}
+
+// displayModeCleared remembers the radiator thermostats whose retained Display Mode discovery
+// was already cleared in this run, so it is not cleared again on every telegram
+var displayModeCleared sync.Map
+
+// displayClearTimeout bounds the wait for the broker to confirm a cleared Display Mode discovery
+var displayClearTimeout = 10 * time.Second
+
+// displayModeTopic is the discovery topic of the Display Mode select of a device
+func displayModeTopic(srcAddr string) string {
+	return fmt.Sprintf("homeassistant/select/max_%s_display_mode/config", srcAddr)
+}
+
+// isRadiatorOnly reports whether the device is known as a radiator thermostat and was never
+// seen as a wall thermostat
+func isRadiatorOnly(deviceAddr string) bool {
+	cfg := getDeviceConfig(deviceAddr)
+	configMutex.RLock()
+	defer configMutex.RUnlock()
+	return cfg.IsRadiator && !cfg.IsWall
+}
+
+// publishDisplayModeDiscovery offers the Display Mode select for wall thermostats only: the
+// display command (0x82) works on wall thermostats only (Cube protocol, S-Message command 82);
+// radiator thermostats always show the setpoint. Earlier versions offered it for every device,
+// so a radiator thermostat's retained discovery is cleared (once per run). A device of unknown
+// type is left alone until its type is known.
+func publishDisplayModeDiscovery(srcAddr string) {
+	cfg := getDeviceConfig(srcAddr)
+	configMutex.RLock()
+	isWall, isRadiator := cfg.IsWall, cfg.IsRadiator
+	configMutex.RUnlock()
+	switch {
+	case isWall:
+		displayModeCleared.Delete(srcAddr)
+		publishSelectDiscovery(srcAddr, "display_mode", "Display Mode", "mdi:thermometer-lines",
+			[]string{"Setpoint", "Actual"}, "{{ value_json.display_mode }}")
+	case isRadiator:
+		if _, done := displayModeCleared.LoadOrStore(srcAddr, true); !done {
+			t := mqttClient.Publish(displayModeTopic(srcAddr), 1, true, "")
+			// wait off the RX path; a failed clear is tried again on the next telegram
+			go func() {
+				if !t.WaitTimeout(displayClearTimeout) || t.Error() != nil {
+					slog.Warn("Clearing the Display Mode discovery failed, trying again later", "device", srcAddr, "error", t.Error())
+					displayModeCleared.Delete(srcAddr)
+				}
+			}()
+		}
 	}
 }
 

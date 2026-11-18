@@ -326,7 +326,7 @@ data:
 
 ### Other
 
-- **Display Mode** (wall): Setpoint vs Actual (`0x82`)
+- **Display Mode** (wall thermostats only): Setpoint vs Actual (`0x82`). Radiator thermostats have no such setting; the bridge offers the select only for wall thermostats, removes it from radiator thermostats and ignores `display_mode/set` for them
 - **Group ID**: 0–255 (`0x22` / remove at 0)
 - **Disassociate Partner**: text `PARTNER` or `PARTNER:type` (`0x21`)
 - **Factory Reset**: button (`0xF0`) — destructive
