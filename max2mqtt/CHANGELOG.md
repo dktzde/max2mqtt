@@ -1,3 +1,7 @@
+## Unreleased
+
+- **Forget a device:** new button "Forget Device" (`max/<id>/forget/set`): the bridge removes the device from its memory and from `devices.json` and clears its retained MQTT topics, including all Home Assistant discovery topics, so it does not come back after a restart. Nothing is sent to the device (Factory Reset does that). Asked for on 2026-11-18 to remove the phantom devices that garbled CUL lines had created
+
 ## 1.8.0
 
 <sub>2026-11-17</sub>
