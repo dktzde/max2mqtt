@@ -40,14 +40,11 @@ func startCommandTest(t *testing.T, ackTimeout time.Duration) (*fakeMQTT, <-chan
 	t.Helper()
 	setBulkAck(t, ackTimeout, 3)
 	rec := recordNotifications(t, time.Hour)
+	resetCommandAckSeen(t) // before startTxTest: the dispatcher stops before the maps come back
 	credits, sent, start := startTxTest(t, time.Minute)
 	credits.Store(900)
 	resetWakeUpState(t)
 	initAckTracker()
-	commandUnackedMu.Lock()
-	commandUnackedNotified = map[string]bool{}
-	commandAckSeen = map[string]bool{}
-	commandUnackedMu.Unlock()
 	touchLastSeen(cmdAckDevice)
 	start()
 	return mqttClient.(*fakeMQTT), sent, rec
@@ -271,14 +268,11 @@ func TestUnacknowledgedDisplayModeRestoredAtOnce(t *testing.T) {
 func TestDroppedBoostRestoresPreviousState(t *testing.T) {
 	setBulkAck(t, 60*time.Millisecond, 3)
 	rec := recordNotifications(t, time.Hour)
+	resetCommandAckSeen(t) // before startTxTest: the dispatcher stops before the maps come back
 	credits, sent, start := startTxTest(t, 100*time.Millisecond)
 	credits.Store(100) // below MinCredits: the command waits, then is dropped
 	resetWakeUpState(t)
 	initAckTracker()
-	commandUnackedMu.Lock()
-	commandUnackedNotified = map[string]bool{}
-	commandAckSeen = map[string]bool{}
-	commandUnackedMu.Unlock()
 	touchLastSeen(cmdAckDevice)
 	fc := mqttClient.(*fakeMQTT)
 	stateMutex.Lock()
