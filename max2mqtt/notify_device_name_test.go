@@ -14,6 +14,10 @@ func useDeviceNames(t *testing.T, names map[string]string) *atomic.Int32 {
 	t.Helper()
 	calls := &atomic.Int32{}
 	oldRun, oldNames := runNotify, haDeviceNames
+	notificationGenerations.mu.Lock()
+	oldGens := notificationGenerations.byID
+	notificationGenerations.byID = map[string]uint64{}
+	notificationGenerations.mu.Unlock()
 	runNotify = func(f func()) { f() }
 	haDeviceNames = func() (map[string]string, error) {
 		calls.Add(1)
@@ -25,6 +29,9 @@ func useDeviceNames(t *testing.T, names map[string]string) *atomic.Int32 {
 	resetDeviceNames()
 	t.Cleanup(func() {
 		runNotify, haDeviceNames = oldRun, oldNames
+		notificationGenerations.mu.Lock()
+		notificationGenerations.byID = oldGens
+		notificationGenerations.mu.Unlock()
 		resetDeviceNames()
 	})
 	return calls
@@ -130,6 +137,7 @@ func TestDeviceLabel(t *testing.T) {
 		{"Living room", "Living room (0A1B2C)"},
 		{"", "0A1B2C"},
 		{"0a1b2c", "0A1B2C"},
+		{"0A1B2C\\", "0A1B2C\\\\ (0A1B2C)"},
 	} {
 		if got := deviceLabel(c.name, "0A1B2C"); got != c.want {
 			t.Errorf("deviceLabel(%q) = %q, want %q", c.name, got, c.want)

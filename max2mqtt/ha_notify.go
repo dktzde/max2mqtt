@@ -109,7 +109,7 @@ func notifyDevice(id, deviceID string, text func(name, label string) (title, mes
 	gen := notificationGenerations.next(id)
 	runNotify(func() {
 		name := deviceName(fetch, deviceID)
-		title, message := text(name, deviceLabel(escapeMarkdown(name), deviceID))
+		title, message := text(name, deviceLabel(name, deviceID))
 		notificationGenerations.mu.Lock()
 		defer notificationGenerations.mu.Unlock()
 		if notificationGenerations.byID[id] != gen {
@@ -164,12 +164,12 @@ func withDeviceName(title, name string) string {
 	return title + ": " + name
 }
 
-// deviceLabel is "Name (0A1B2C)", or only the address when Home Assistant has no other name
+// deviceLabel is "Name (0A1B2C)" with the name escaped for Markdown, or only the address when Home Assistant has no other name
 func deviceLabel(name, deviceID string) string {
-	if name == "" || strings.EqualFold(strings.Trim(name, "\\"), deviceID) {
+	if name == "" || strings.EqualFold(name, deviceID) {
 		return deviceID
 	}
-	return name + " (" + deviceID + ")"
+	return escapeMarkdown(name) + " (" + deviceID + ")"
 }
 
 // haDeviceNames returns the names Home Assistant shows for the MAX! devices, keyed by radio
@@ -221,10 +221,10 @@ func deviceName(fetch func() (map[string]string, error), deviceID string) string
 }
 
 // deviceNamesTemplate collects the names of the MAX! devices in Home Assistant: the name of the
-// entity with the attribute device_rf_address (climate), otherwise the name the user gave the
+// climate entity with the attribute device_rf_address, otherwise the name the user gave the
 // device, otherwise the shortest entity name of the device. A name that is just the address counts as none.
 const deviceNamesTemplate = `{%- set ns = namespace(m={}, best='') -%}
-{%- for s in states if s.attributes.device_rf_address is defined -%}
+{%- for s in states.climate if s.attributes.device_rf_address is defined -%}
 {%- set rf = s.attributes.device_rf_address | string | upper -%}
 {%- set n = s.name | string | trim -%}
 {%- if n and n | upper != rf -%}{%- set ns.m = dict(ns.m, **{rf: n}) -%}{%- endif -%}
@@ -236,6 +236,7 @@ const deviceNamesTemplate = `{%- set ns = namespace(m={}, best='') -%}
 {%- set rf = k[4:] | upper -%}
 {%- if k.startswith('max_') and rf not in ns.m -%}
 {%- set ns.best = (device_attr(d, 'name_by_user') or '') | trim -%}
+{%- if ns.best | upper == rf -%}{%- set ns.best = '' -%}{%- endif -%}
 {%- if not ns.best -%}{%- for x in device_entities(d) -%}
 {%- set n = state_attr(x, 'friendly_name') | string | trim -%}
 {%- if n and n != 'None' and n | upper != rf and (not ns.best or n | length < ns.best | length) -%}{%- set ns.best = n -%}{%- endif -%}
@@ -302,12 +303,16 @@ func supervisorDismiss(id string) {
 	callHAService("dismiss", map[string]string{"notification_id": id})
 }
 
-// haCalls runs the notification calls one after another in the order they were made, so a
-// dismiss cannot overtake the create of the same notification
-var (
-	haCalls     chan func()
-	haCallsOnce sync.Once
-)
+// haPending holds the latest call (create or dismiss) per notification ID that has not been sent
+// yet. Queueing never blocks the caller (the radio dispatcher); a newer call for the same ID
+// replaces an older one that is still waiting, so a dismiss cannot be overtaken by an earlier create.
+var haPending = struct {
+	mu    sync.Mutex
+	calls map[string]map[string]string // notification ID → service ("create"/"dismiss") and data
+	order []string
+	wake  chan struct{}
+	once  sync.Once
+}{calls: map[string]map[string]string{}, wake: make(chan struct{}, 1)}
 
 func callHAService(service string, data map[string]string) {
 	token := os.Getenv("SUPERVISOR_TOKEN")
@@ -315,32 +320,67 @@ func callHAService(service string, data map[string]string) {
 		slog.Debug("No SUPERVISOR_TOKEN, skipping Home Assistant notification", "service", service)
 		return
 	}
-	haCallsOnce.Do(func() {
-		haCalls = make(chan func(), 256)
-		go func() {
-			for call := range haCalls {
-				call()
+	id := data["notification_id"]
+	call := map[string]string{"service": service}
+	for k, v := range data {
+		call[k] = v
+	}
+	haPending.once.Do(func() { go haCallWorker(token) })
+	haPending.mu.Lock()
+	if _, waiting := haPending.calls[id]; !waiting {
+		haPending.order = append(haPending.order, id)
+	}
+	haPending.calls[id] = call
+	haPending.mu.Unlock()
+	select {
+	case haPending.wake <- struct{}{}:
+	default:
+	}
+}
+
+// haCallWorker sends the waiting calls one after another
+func haCallWorker(token string) {
+	for range haPending.wake {
+		for {
+			haPending.mu.Lock()
+			if len(haPending.order) == 0 {
+				haPending.mu.Unlock()
+				break
 			}
-		}()
-	})
-	haCalls <- func() {
-		body, _ := json.Marshal(data)
-		req, err := http.NewRequest(http.MethodPost, "http://supervisor/core/api/services/persistent_notification/"+service, bytes.NewReader(body))
-		if err != nil {
-			slog.Warn("Home Assistant notification failed", "error", err)
-			return
+			id := haPending.order[0]
+			haPending.order = haPending.order[1:]
+			call := haPending.calls[id]
+			delete(haPending.calls, id)
+			haPending.mu.Unlock()
+			postHAService(token, call)
 		}
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("Content-Type", "application/json")
-		client := &http.Client{Timeout: 10 * time.Second}
-		resp, err := client.Do(req)
-		if err != nil {
-			slog.Warn("Home Assistant notification failed", "error", err)
-			return
+	}
+}
+
+func postHAService(token string, call map[string]string) {
+	service := call["service"]
+	data := map[string]string{}
+	for k, v := range call {
+		if k != "service" {
+			data[k] = v
 		}
-		resp.Body.Close()
-		if resp.StatusCode >= 300 {
-			slog.Warn("Home Assistant notification failed", "status", resp.Status)
-		}
+	}
+	body, _ := json.Marshal(data)
+	req, err := http.NewRequest(http.MethodPost, "http://supervisor/core/api/services/persistent_notification/"+service, bytes.NewReader(body))
+	if err != nil {
+		slog.Warn("Home Assistant notification failed", "error", err)
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		slog.Warn("Home Assistant notification failed", "error", err)
+		return
+	}
+	resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		slog.Warn("Home Assistant notification failed", "status", resp.Status)
 	}
 }
