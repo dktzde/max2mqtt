@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -89,7 +90,7 @@ func (b *bulkWaitTracker) done(cmd QueuedCommand) {
 	b.mu.Unlock()
 
 	if finished && wasNotified {
-		haDismiss(bulkNotificationID(cmd.DeviceID))
+		dismissNotification(bulkNotificationID(cmd.DeviceID))
 	}
 }
 
@@ -100,13 +101,59 @@ var runNotify = func(f func()) { go f() }
 // notifyDevice creates a notification about one MAX! device. text gets the name Home Assistant
 // shows for the device ("" when unknown) and the label "Name (0A1B2C)" (only the address when the
 // name is unknown), so the user sees which thermostat is meant and not only its radio address.
+//
+// The lookup can take a while; a dismiss of the same notification in the meantime (dismissNotification)
+// cancels the create, so a condition that has cleared is not shown afterwards.
 func notifyDevice(id, deviceID string, text func(name, label string) (title, message string)) {
 	notify, fetch := haNotify, haDeviceNames
+	gen := notificationGenerations.next(id)
 	runNotify(func() {
 		name := deviceName(fetch, deviceID)
-		title, message := text(name, deviceLabel(name, deviceID))
+		title, message := text(name, deviceLabel(escapeMarkdown(name), deviceID))
+		notificationGenerations.mu.Lock()
+		defer notificationGenerations.mu.Unlock()
+		if notificationGenerations.byID[id] != gen {
+			return // dismissed or replaced while the name was looked up
+		}
 		notify(id, title, message)
 	})
+}
+
+// notificationGenerations counts the creates and dismisses per notification ID
+var notificationGenerations = &notificationGens{byID: map[string]uint64{}}
+
+type notificationGens struct {
+	mu   sync.Mutex
+	byID map[string]uint64
+}
+
+func (g *notificationGens) next(id string) uint64 {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.byID[id]++
+	return g.byID[id]
+}
+
+// dismissNotification removes a notification and cancels a create of it that still waits for the
+// device name. Use it for notifications created by notifyDevice.
+func dismissNotification(id string) {
+	notificationGenerations.mu.Lock()
+	defer notificationGenerations.mu.Unlock()
+	notificationGenerations.byID[id]++
+	haDismiss(id)
+}
+
+// escapeMarkdown keeps a device name literal in the notification text, which Home Assistant
+// renders as Markdown
+func escapeMarkdown(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if strings.ContainsRune("\\`*_{}[]()#+-.!|<>~", r) {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // withDeviceName appends the device name to a notification title, if it is known
@@ -119,7 +166,7 @@ func withDeviceName(title, name string) string {
 
 // deviceLabel is "Name (0A1B2C)", or only the address when Home Assistant has no other name
 func deviceLabel(name, deviceID string) string {
-	if name == "" || strings.EqualFold(name, deviceID) {
+	if name == "" || strings.EqualFold(strings.Trim(name, "\\"), deviceID) {
 		return deviceID
 	}
 	return name + " (" + deviceID + ")"
@@ -140,6 +187,8 @@ var deviceNames struct {
 	mu      sync.Mutex
 	byID    map[string]string
 	fetched time.Time
+	// attempted: the last lookup, also a failed one; no new lookup within deviceNamesRetry
+	attempted time.Time
 }
 
 // deviceName returns the name Home Assistant shows for the device, "" when unknown. The names are
@@ -150,11 +199,19 @@ func deviceName(fetch func() (map[string]string, error), deviceID string) string
 	defer deviceNames.mu.Unlock()
 	name, ok := deviceNames.byID[id]
 	age := time.Since(deviceNames.fetched)
-	if deviceNames.fetched.IsZero() || age >= deviceNamesMaxAge || (!ok && age >= deviceNamesRetry) {
+	due := deviceNames.fetched.IsZero() || age >= deviceNamesMaxAge || (!ok && age >= deviceNamesRetry)
+	if due && (deviceNames.attempted.IsZero() || time.Since(deviceNames.attempted) >= deviceNamesRetry) {
+		deviceNames.attempted = time.Now()
 		names, err := fetch()
 		if err != nil {
-			slog.Debug("Device names from Home Assistant not available", "error", err)
-			return name
+			// not the error itself: it may contain an IP address
+			var se templateStatusError
+			if errors.As(err, &se) {
+				slog.Debug("Device names from Home Assistant not available", "status", int(se))
+			} else {
+				slog.Debug("Device names from Home Assistant not available")
+			}
+			return name // the last names found stay
 		}
 		deviceNames.byID = names
 		deviceNames.fetched = time.Now()
@@ -165,10 +222,12 @@ func deviceName(fetch func() (map[string]string, error), deviceID string) string
 
 // deviceNamesTemplate collects the names of the MAX! devices in Home Assistant: the name of the
 // entity with the attribute device_rf_address (climate), otherwise the name the user gave the
-// device, otherwise the shortest entity name of the device that is not just the address.
+// device, otherwise the shortest entity name of the device. A name that is just the address counts as none.
 const deviceNamesTemplate = `{%- set ns = namespace(m={}, best='') -%}
 {%- for s in states if s.attributes.device_rf_address is defined -%}
-{%- set ns.m = dict(ns.m, **{(s.attributes.device_rf_address | string | upper): s.name}) -%}
+{%- set rf = s.attributes.device_rf_address | string | upper -%}
+{%- set n = s.name | string | trim -%}
+{%- if n and n | upper != rf -%}{%- set ns.m = dict(ns.m, **{rf: n}) -%}{%- endif -%}
 {%- endfor -%}
 {%- for e in integration_entities('mqtt') -%}
 {%- set d = device_id(e) -%}
@@ -176,10 +235,10 @@ const deviceNamesTemplate = `{%- set ns = namespace(m={}, best='') -%}
 {%- set k = i | list | last | string -%}
 {%- set rf = k[4:] | upper -%}
 {%- if k.startswith('max_') and rf not in ns.m -%}
-{%- set ns.best = device_attr(d, 'name_by_user') or '' -%}
+{%- set ns.best = (device_attr(d, 'name_by_user') or '') | trim -%}
 {%- if not ns.best -%}{%- for x in device_entities(d) -%}
-{%- set n = state_attr(x, 'friendly_name') | string -%}
-{%- if n != 'None' and rf | lower not in n | lower and (not ns.best or n | length < ns.best | length) -%}{%- set ns.best = n -%}{%- endif -%}
+{%- set n = state_attr(x, 'friendly_name') | string | trim -%}
+{%- if n and n != 'None' and n | upper != rf and (not ns.best or n | length < ns.best | length) -%}{%- set ns.best = n -%}{%- endif -%}
 {%- endfor -%}{%- endif -%}
 {%- if ns.best -%}{%- set ns.m = dict(ns.m, **{rf: ns.best}) -%}{%- endif -%}
 {%- endif -%}{%- endfor -%}{%- endif -%}
@@ -207,10 +266,15 @@ func supervisorDeviceNames() (map[string]string, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("template API: %s", resp.Status)
+		return nil, templateStatusError(resp.StatusCode)
 	}
 	return parseDeviceNames(resp.Body)
 }
+
+// templateStatusError is an HTTP status of the template API other than success
+type templateStatusError int
+
+func (e templateStatusError) Error() string { return fmt.Sprintf("template API: HTTP %d", int(e)) }
 
 // parseDeviceNames reads the rendered template, a JSON object of radio address → name
 func parseDeviceNames(r io.Reader) (map[string]string, error) {
@@ -238,13 +302,28 @@ func supervisorDismiss(id string) {
 	callHAService("dismiss", map[string]string{"notification_id": id})
 }
 
+// haCalls runs the notification calls one after another in the order they were made, so a
+// dismiss cannot overtake the create of the same notification
+var (
+	haCalls     chan func()
+	haCallsOnce sync.Once
+)
+
 func callHAService(service string, data map[string]string) {
 	token := os.Getenv("SUPERVISOR_TOKEN")
 	if token == "" {
 		slog.Debug("No SUPERVISOR_TOKEN, skipping Home Assistant notification", "service", service)
 		return
 	}
-	go func() {
+	haCallsOnce.Do(func() {
+		haCalls = make(chan func(), 256)
+		go func() {
+			for call := range haCalls {
+				call()
+			}
+		}()
+	})
+	haCalls <- func() {
 		body, _ := json.Marshal(data)
 		req, err := http.NewRequest(http.MethodPost, "http://supervisor/core/api/services/persistent_notification/"+service, bytes.NewReader(body))
 		if err != nil {
@@ -263,5 +342,5 @@ func callHAService(service string, data map[string]string) {
 		if resp.StatusCode >= 300 {
 			slog.Warn("Home Assistant notification failed", "status", resp.Status)
 		}
-	}()
+	}
 }

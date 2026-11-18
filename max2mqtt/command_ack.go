@@ -111,6 +111,6 @@ func commandAcked(deviceID string) {
 	}
 	if notified || firstAck {
 		// first Ack since the start: a notification from before a restart may still be shown
-		haDismiss(commandUnackedID(deviceID))
+		dismissNotification(commandUnackedID(deviceID))
 	}
 }

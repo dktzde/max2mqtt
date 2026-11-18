@@ -380,10 +380,11 @@ func weekProfileDaysUnacked(deviceID, name string, days []int, group bool) {
 	}
 	publishProgramme(deviceID)
 	slog.Error("Week profile not acknowledged by the device; the days are now unknown, send them again", "device", deviceID, "days", name, "day_group", group)
+	tries := bulkMaxTries
 	notifyDevice(weekProfileUnackedID(deviceID), deviceID, func(devName, label string) (string, string) {
 		return withDeviceName("MAX! week profile not acknowledged", devName),
 			fmt.Sprintf("MAX! device %s did not acknowledge the week profile for %s after %d tries. These days are now unknown to the bridge; send them again (max/%s/programme/set).",
-				label, name, bulkMaxTries, deviceID)
+				label, name, tries, deviceID)
 	})
 }
 

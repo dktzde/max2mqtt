@@ -56,7 +56,7 @@ func forgetDevice(deviceID string) {
 		return
 	}
 	n, complete := clearRetainedTopics(deviceID)
-	haDismiss(commandUnackedID(deviceID))
+	dismissNotification(commandUnackedID(deviceID))
 	if !complete {
 		slog.Error("Forget device: not all retained topics could be cleared, press Forget Device again", "device", deviceID, "cleared_topics", n)
 		return

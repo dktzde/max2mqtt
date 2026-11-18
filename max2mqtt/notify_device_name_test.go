@@ -34,6 +34,7 @@ func resetDeviceNames() {
 	deviceNames.mu.Lock()
 	deviceNames.byID = nil
 	deviceNames.fetched = time.Time{}
+	deviceNames.attempted = time.Time{}
 	deviceNames.mu.Unlock()
 }
 
@@ -50,6 +51,7 @@ func captureNotifications(t *testing.T) *[]sentNotification {
 
 func TestUnackedCommandNotificationNamesTheDevice(t *testing.T) {
 	resetTestState()
+	resetCommandAckSeen(t)
 	useDeviceNames(t, map[string]string{"0A1B2C": "Living room"})
 	got := captureNotifications(t)
 
@@ -92,6 +94,7 @@ func TestWeekProfileNotificationNamesTheDevice(t *testing.T) {
 
 func TestNotificationKeepsTheAddressWithoutName(t *testing.T) {
 	resetTestState()
+	resetCommandAckSeen(t)
 	useDeviceNames(t, nil) // Home Assistant not reachable
 	got := captureNotifications(t)
 
@@ -147,5 +150,54 @@ func TestParseDeviceNames(t *testing.T) {
 	}
 	if _, err := parseDeviceNames(strings.NewReader("not json")); err == nil {
 		t.Error("expected an error for a broken answer")
+	}
+}
+
+func TestFailedLookupIsNotRepeatedAtOnce(t *testing.T) {
+	calls := useDeviceNames(t, nil)
+	for i := 0; i < 3; i++ {
+		if got := deviceName(haDeviceNames, "0A1B2C"); got != "" {
+			t.Fatalf("name without Home Assistant: %q", got)
+		}
+	}
+	if n := calls.Load(); n != 1 {
+		t.Fatalf("expected one lookup after a failure, got %d", n)
+	}
+}
+
+func TestDismissCancelsPendingCreate(t *testing.T) {
+	useDeviceNames(t, map[string]string{"0A1B2C": "Living room"})
+	got := captureNotifications(t)
+	var pending func()
+	runNotify = func(f func()) { pending = f } // the name lookup has not finished yet
+	oldDismiss := haDismiss
+	var dismissed []string
+	haDismiss = func(id string) { dismissed = append(dismissed, id) }
+	t.Cleanup(func() { haDismiss = oldDismiss })
+
+	notifyDevice("max2mqtt_test_0A1B2C", "0A1B2C", func(name, label string) (string, string) { return "t", label })
+	dismissNotification("max2mqtt_test_0A1B2C")
+	pending()
+
+	if len(*got) != 0 {
+		t.Fatalf("create after the dismiss was sent: %v", *got)
+	}
+	if len(dismissed) != 1 {
+		t.Fatalf("dismiss not sent: %v", dismissed)
+	}
+}
+
+func TestDeviceNameIsEscapedInTheMessage(t *testing.T) {
+	useDeviceNames(t, map[string]string{"0A1B2C": "Guest *room*"})
+	got := captureNotifications(t)
+	notifyDevice("max2mqtt_test_0A1B2C", "0A1B2C", func(name, label string) (string, string) {
+		return withDeviceName("t", name), label
+	})
+	n := (*got)[0]
+	if n.title != "t: Guest *room*" {
+		t.Errorf("title: %q", n.title)
+	}
+	if n.message != `Guest \*room\* (0A1B2C)` {
+		t.Errorf("message: %q", n.message)
 	}
 }
