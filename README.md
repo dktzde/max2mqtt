@@ -56,6 +56,16 @@ Who made what, newest first. Full list with dates: [CHANGELOG](max2mqtt/CHANGELO
 
 **This fork, [dktzde/max2mqtt](https://github.com/dktzde/max2mqtt)** (since 2026-10-24):
 
+- **v1.9.2** (2026-11-18) — Display Mode only for wall thermostats
+- **v1.9.1** (2026-11-18) — Notifications name the device (Home Assistant name and radio address)
+- **v1.9.0** (2026-11-18) — "Forget Device" button; unacked notification also removed after a restart
+- **v1.8.0** (2026-11-17) — Failure reasons (no Ack vs. duty cycle), garbled CUL lines dropped, new devices only from trusted telegrams, no WakeUp before SetTemperature
+- **v1.7.2** (2026-11-14) — Dependencies updated (Go 1.26, Alpine 3.24), Dependabot
+- **v1.7.1** (2026-11-14) — Reconnect a CUL that stops answering
+- **v1.7.0** (2026-11-10) — Commands wait for the device's Ack and are resent, `config_status` attribute
+- **v1.6.3** (2026-11-08) — Actual temperature unknown in vacation mode
+- **v1.6.2** (2026-11-05) — Week profile acknowledgement per day (`programme_status`)
+- **v1.6.0 and v1.6.1** (2026-11-02) — Week profile day groups: Mon–Fri, Sat–Sun or the whole week in one message
 - **v1.5.2** (2026-11-01) — Week profile messages wait for the device's Ack and are resent up to 3 times
 - **v1.5.1** (2026-11-01) — Config changes and setpoints are confirmed only by the Ack for their own telegram (message counter)
 - **v1.5.0** (2026-11-01) — Credit maximum taken from the CUL (a-culfw 3600), Duty Cycle sensor and week profile reserve follow it
