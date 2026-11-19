@@ -91,3 +91,5 @@ Who made what, newest first. Full list with dates: [CHANGELOG](max2mqtt/CHANGELO
 ---
 
 *I use about 10 MAX! thermostats in my home. This add-on was built with the help of [Claude Code in Home Assistant](https://github.com/dktzde/hass-claude-code) and is used and tested every day.*
+
+If you find this project useful, consider starring the repository!
