@@ -2,7 +2,7 @@
 
 Handover file for the maintainer and for Claude Code sessions working on this repository. **Read this first, and update it after every step** (state, decisions, next steps), so the next session can continue without the chat history.
 
-Last updated: 2026-11-19 (visibility: release, topics, README)
+Last updated: 2026-11-19 (branch cleanup)
 
 ## Current state
 
@@ -79,6 +79,7 @@ Last updated: 2026-11-19 (visibility: release, topics, README)
 
 - **Remotes:** `origin` = `dktzde/max2mqtt`, `upstream` = `Dad-Ju/max2mqtt` (active upstream, itself a fork of pwurbs), `pwurbs` = `pwurbs/max2mqtt` (original).
 - **One feature = one branch from `upstream/main` = one PR**, so upstream can take each one alone. Features that need this fork's code (Cube compatibility) start from our `main` and say so. Our `main` merges them with merge commits (not squashed), through a `release-x.y.z` branch and a PR.
+- **Branch cleanup (2026-11-19):** on GitHub only `main` and `culfw-auto-ack` (source of the open PR Dad-Ju/max2mqtt#1) are left; merged branches are deleted after the merge. The fork was detached from Dad-Ju/max2mqtt on 2026-11-19, so new upstream PRs need a new fork. Branches based on `upstream/main` for possible upstream PRs are kept only in the maintainer's local clone: `bridge-availability`, `config-unknown-values`, `duty-cycle-sensor`, `fix-ack-message-counter`, `fix-auto-week-program`, `fix-boost-setpoint`, `fix-preset-after-boost`, `fix-zero-actual-temperature`, `shutter-contact`, `tx-wait-for-credits`, `vacation-mode`, `valve-position-sensor`, `week-profile-fixes`.
 - **Branches for upstream PRs:** no version bump, only `## Unreleased` in `max2mqtt/CHANGELOG.md`, no `STATUS.md`/`CLAUDE.md`/`.coderabbit.yaml`. Commit style there: plain imperative sentences, like Dad-Ju's commits.
 - **Tests:** `mqtt_fake_test.go` (fake MQTT client, `resetTestState`) is the same file in every branch, so merges do not conflict; extra methods go into the branch's own test file. Run `go vet ./... && go test -race -count=3 ./...` (count > 1 finds state leaking between tests).
 - **Our `main`:** sets the version in `max2mqtt/config.yaml` **and** `io.hass.version` in `max2mqtt/Dockerfile`. The add-on builds from source on the device, so whatever is on `main` with a new version reaches Home Assistant on the next update. Docs-only changes get no new version.
