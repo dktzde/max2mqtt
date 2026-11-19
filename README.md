@@ -6,6 +6,8 @@
 
 Coming from MAX! Cube integration? Your Cube can stay – see "Replacing a MAX! Cube" below.
 
+If you find this project useful, consider starring the repository! ⭐
+
 ## Start here: gateway_id
 
 MAX! devices only accept commands from the gateway address they were paired with. Set `gateway_id` **before the first start**:
@@ -91,5 +93,3 @@ Who made what, newest first. Full list with dates: [CHANGELOG](max2mqtt/CHANGELO
 ---
 
 *I use about 10 MAX! thermostats in my home. This add-on was built with the help of [Claude Code in Home Assistant](https://github.com/dktzde/hass-claude-code) and is used and tested every day.*
-
-If you find this project useful, consider starring the repository!
