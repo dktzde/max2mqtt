@@ -2,10 +2,11 @@
 
 Handover file for the maintainer and for Claude Code sessions working on this repository. **Read this first, and update it after every step** (state, decisions, next steps), so the next session can continue without the chat history.
 
-Last updated: 2026-11-24 (app wording)
+Last updated: 2026-11-24 (native arm64 CI)
 
 ## Current state
 
+- **CI on a native arm64 runner (2026-11-24, branch `ci/arm64-native`, no version):** `build.yml` builds linux/arm64 on `ubuntu-24.04-arm` instead of QEMU, and starts the bridge on both architectures (no broker, no CUL) and checks that it stops cleanly on SIGTERM. README: aarch64 is only test-built, the maintainer has no aarch64 hardware. Same as hass-claude-code (PR #75 there).
 - **"App" instead of "add-on" (2026-11-24, docs only, no version):** README, `max2mqtt/README.md` and `DOCS.md` say app, as Home Assistant does since 2026 (Settings > Apps > Install app); the path `addons/local/max2mqtt` stays. Same change as in hass-claude-code (PR #77 there).
 - **Visibility (2026-11-19):** repository description and topics set; GitHub release v1.9.2 promoted to a full release ("latest", sums up 1.7.0-1.9.2); README typos fixed, history up to 1.9.2, star note (PR #51). Planned by the maintainer: detach the fork from Dad-Ju/max2mqtt via GitHub Support (the open PR Dad-Ju/max2mqtt#1 may be closed by that; later upstream PRs need a new fork), posts in the Home Assistant community and the FHEM forum.
 - **1.9.2 on the device since 2026-11-18 20:45** (Supervisor update from 1.9.1, with backup; PR #49, GitHub pre-release v1.9.2): Display Mode only for wall thermostats. Checked 20:46-21:30: starts normally, no warnings or errors, CUL connected. The only radiator thermostat that sent a telegram in that time (0C89DE) lost its retained `display_mode` discovery and its select entity in Home Assistant. The other nine radiator thermostats sent nothing in 45 minutes (few telegrams in the evening), so their entities are still there; they go away with their next telegram. Not checked yet: all nine cleared, a `display_mode/set` to a radiator thermostat being ignored (log `Display mode ignored`). CodeRabbit (2 rounds): failed clear retried with the next telegram, shared test fake left unchanged; not changed on purpose: the RF address in the log (every device log names it).
