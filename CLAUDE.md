@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-**Read [`STATUS.md`](STATUS.md) first.** It holds the current state, the next steps and the conventions of this fork (branches, versions, changelog, pull requests). Update it after every step, so the next session can continue without the chat history.
+**Read [`MAINTENANCE.md`](MAINTENANCE.md) first.** It holds the decisions and conventions of this fork (branches, versions, changelog, pull requests, tests), the known issues and the key files. Add what you learn to it.
 
 The add-on lives in `max2mqtt/` (Go). Build and test there:
 
@@ -18,7 +18,7 @@ These rules apply to every session, also to Claude Code on the web.
 - **Author:** commits and PRs must look as if the maintainer made them alone. Before the first commit run `git config user.name "dktzde"` and `git config user.email "dktzde@users.noreply.github.com"`. No `Co-Authored-By`, no "Generated with Claude" in commits, PR texts, issues, changelog or README.
 - **Branches:** no `claude/` prefix where the environment allows it (Claude Code on the web may force `claude/…`; that is accepted).
 - **One topic = one branch = one PR.** One commit per sub-topic, test after each commit. Plan the commit split before the first push. Never force-push a pushed branch; fix mistakes with `git revert`.
-- **This is a fork of `Dad-Ju/max2mqtt`.** Open PRs against our fork with `gh pr create --repo dktzde/max2mqtt --base main`, otherwise they land at the upstream. Branches for PRs to the upstream start from `upstream/main`, use only `## Unreleased` in the changelog and never contain `STATUS.md`, `CLAUDE.md` or `.coderabbit.yaml`. PRs to the upstream only after a test on the real device and explicit approval by the maintainer.
+- **This is a fork of `Dad-Ju/max2mqtt`.** Open PRs against our fork with `gh pr create --repo dktzde/max2mqtt --base main`, otherwise they land at the upstream. Branches for PRs to the upstream start from `upstream/main`, use only `## Unreleased` in the changelog and never contain `CLAUDE.md`, `MAINTENANCE.md` or `.coderabbit.yaml`. PRs to the upstream only after a test on the real device and explicit approval by the maintainer.
 - **CodeRabbit:** this repository has fewer than 10 stars, so CodeRabbit does not review PRs automatically. Right after opening a PR that changes code (Go code and tests, `Dockerfile`, add-on `config.yaml`, workflows), comment `@coderabbitai review` (`gh pr comment <number> --repo dktzde/max2mqtt --body "@coderabbitai review"`). Skip documentation-only PRs (`docs:`), drafts and pure version bumps without code changes. Before the merge, read the bot's comments and either address them or explain in the PR why not. Settings are in `.coderabbit.yaml`.
 - **Merge** only when the maintainer explicitly asks, always with a merge commit (no squash), so every commit can be reverted on its own.
 - **Versions:** bump only for user-facing changes and only on our `main`; documentation-only changes get no new version. Change the version everywhere at the same time.
@@ -26,4 +26,4 @@ These rules apply to every session, also to Claude Code on the web.
 - **Language:** everything in the repository is English (code, comments, docs, commits, PR and issue texts). Commit messages in the imperative, e.g. `feat(scope): …`, `fix: …`, `docs: …`, `chore: …`, `ci: …`; in PRs to the upstream follow its style.
 - **No secrets or private data** (tokens, passwords, IP addresses, radio addresses, serial numbers, entity IDs) in the repository; use placeholders.
 - **README:** a credit line for Claude Code only after asking the maintainer.
-- **Handover:** keep `STATUS.md` (create it if missing) with the current state, next steps, known issues, decisions and key files. Record what runs on the device with date and time, what was checked and what not. Update it after every step.
+- **No `STATUS.md`:** the maintainer does not want a status or handover file in this repository. Do not create one.
