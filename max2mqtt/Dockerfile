@@ -34,8 +34,14 @@ LABEL \
 
 WORKDIR /app
 
-# Install runtime dependencies
-RUN apk add --no-cache tzdata ca-certificates
+# Install runtime dependencies. The Supervisor builds the image on the user's
+# device: retry after 20 s and 2 min, so a short network outage does not make
+# the update fail.
+RUN for wait in 20 120 0; do \
+        apk add --no-cache tzdata ca-certificates && break; \
+        [ "${wait}" -eq 0 ] && exit 1; \
+        echo "apk failed, retrying in ${wait} s"; sleep "${wait}"; \
+    done
 
 # Copy binary from builder
 COPY --from=builder /app/max2mqtt /app/max2mqtt
