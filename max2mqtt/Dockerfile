@@ -1,8 +1,4 @@
-ARG BUILD_FROM=alpine:3.24
-
-# Build Stage
-# Home Assistant passes BUILD_FROM, but we need a Go builder first.
-# We use standard Go alpine image for building.
+# Build Stage: standard Go Alpine image, builds a static binary
 FROM golang:1.26-alpine AS builder
 
 # Arguments for cross-compilation (passed automatically by docker buildx / HA)
@@ -22,8 +18,10 @@ COPY *.go ./
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o max2mqtt .
 
 # Final Stage
-# Use the base image provided by Home Assistant for consistency, or standard Alpine
-FROM ${BUILD_FROM}
+# A fixed FROM, not ARG BUILD_FROM: a Supervisor before 2026.04.0 passes its own
+# BUILD_FROM (ghcr.io/home-assistant/base) when there is no build.yaml, which
+# would override an ARG default. Since 2026.04.0 the Supervisor passes none.
+FROM alpine:3.24
 
 # Add Home Assistant Labels
 # These help the supervisor identify the add-on
@@ -36,8 +34,14 @@ LABEL \
 
 WORKDIR /app
 
-# Install runtime dependencies
-RUN apk add --no-cache tzdata ca-certificates
+# Install runtime dependencies. The Supervisor builds the image on the user's
+# device: retry after 20 s and 2 min, so a short network outage does not make
+# the update fail.
+RUN for wait in 20 120 0; do \
+        apk add --no-cache tzdata ca-certificates && break; \
+        [ "${wait}" -eq 0 ] && exit 1; \
+        echo "apk failed, retrying in ${wait} s"; sleep "${wait}"; \
+    done
 
 # Copy binary from builder
 COPY --from=builder /app/max2mqtt /app/max2mqtt
