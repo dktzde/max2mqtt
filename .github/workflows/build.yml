@@ -1,9 +1,11 @@
 name: Build
 
-# Checks every PR and every push to main the way the Supervisor builds the add-on:
-# go vet + tests, then the Dockerfile in max2mqtt/ for both add-on architectures
-# (amd64, aarch64 = linux/arm64 via QEMU). The amd64 image is loaded and its binary
-# started once. Nothing is pushed or released.
+# Checks every PR and every push to main the way the Supervisor builds the app:
+# go vet + tests, then the Dockerfile in max2mqtt/ for both app architectures
+# (amd64, aarch64 = linux/arm64), each on a GitHub runner of that architecture (no
+# emulation). Each image is loaded and checked. Nothing is pushed or released.
+#
+# The maintainer has no aarch64 hardware: this build is the only aarch64 test.
 
 on:
   pull_request:
@@ -34,17 +36,19 @@ jobs:
       - run: go test -race -count=1 ./...
 
   docker:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        platform: [linux/amd64, linux/arm64]
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v7
-      - uses: docker/setup-qemu-action@v4
-        if: matrix.platform != 'linux/amd64'
       - uses: docker/setup-buildx-action@v4
-      - name: Build add-on image
+      - name: Build app image
         run: docker buildx build max2mqtt --pull --platform ${{ matrix.platform }} --load -t max2mqtt-test:local
       - name: Check image
         run: |
