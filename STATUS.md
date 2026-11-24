@@ -2,10 +2,11 @@
 
 Handover file for the maintainer and for Claude Code sessions working on this repository. **Read this first, and update it after every step** (state, decisions, next steps), so the next session can continue without the chat history.
 
-Last updated: 2026-11-24 (app wording)
+Last updated: 2026-11-24 (automatic pre-releases)
 
 ## Current state
 
+- **Automatic pre-releases (2026-11-24, branch `ci/release-automation`, no version):** `.github/workflows/release.yml` + `.github/scripts/release.sh` publish a GitHub pre-release `v<version>` with the changelog entry when a new version reaches `main`. The full release ("latest") stays a manual step after the test on the device. Same script as in hass-claude-code (PR #76 there), but always `--prerelease`.
 - **"App" instead of "add-on" (2026-11-24, docs only, no version):** README, `max2mqtt/README.md` and `DOCS.md` say app, as Home Assistant does since 2026 (Settings > Apps > Install app); the path `addons/local/max2mqtt` stays. Same change as in hass-claude-code (PR #77 there).
 - **Visibility (2026-11-19):** repository description and topics set; GitHub release v1.9.2 promoted to a full release ("latest", sums up 1.7.0-1.9.2); README typos fixed, history up to 1.9.2, star note (PR #51). Planned by the maintainer: detach the fork from Dad-Ju/max2mqtt via GitHub Support (the open PR Dad-Ju/max2mqtt#1 may be closed by that; later upstream PRs need a new fork), posts in the Home Assistant community and the FHEM forum.
 - **1.9.2 on the device since 2026-11-18 20:45** (Supervisor update from 1.9.1, with backup; PR #49, GitHub pre-release v1.9.2): Display Mode only for wall thermostats. Checked 20:46-21:30: starts normally, no warnings or errors, CUL connected. The only radiator thermostat that sent a telegram in that time (0C89DE) lost its retained `display_mode` discovery and its select entity in Home Assistant. The other nine radiator thermostats sent nothing in 45 minutes (few telegrams in the evening), so their entities are still there; they go away with their next telegram. Not checked yet: all nine cleared, a `display_mode/set` to a radiator thermostat being ignored (log `Display mode ignored`). CodeRabbit (2 rounds): failed clear retried with the next telegram, shared test fake left unchanged; not changed on purpose: the RF address in the log (every device log names it).
@@ -91,6 +92,7 @@ Last updated: 2026-11-24 (app wording)
 - **Protocol references:** FHEM `10_MAX.pm` (device messages, `desiredTemperature … until`) and `14_CUL_MAX.pm` (CUL side) from [fhem/fhem-mirror](https://github.com/fhem/fhem-mirror) (`fhem/FHEM/`); Cube LAN protocol incl. byte layouts in [Bouni/max-cube-protocol](https://github.com/Bouni/max-cube-protocol). Check there before guessing a message layout.
 - Go is installed only for a session (`apk add go`), gone after an add-on restart of the Claude Code add-on.
 
+- **Releases:** a new version on `main` gets a GitHub pre-release automatically (`release.yml`). After the test on the device the maintainer makes it the full release by hand (`gh release edit v<version> --prerelease=false --latest`, title with a short summary); a full release may sum up several pre-releases.
 - **CodeRabbit** (AI review of PRs against our `main`): settings in `.coderabbit.yaml` (#11, 2026-10-31). Release PRs (`chore(release)`) and docs PRs are not reviewed automatically. Active once the maintainer installs the CodeRabbit GitHub app for this repository. Docstring coverage check off (`pre_merge_checks.docstrings.mode: "off"`, 2026-11-01): the upstream code has no docstring rule. Status comments ("review skipped"/"in progress") are off: `reviews.review_status: false` (2026-11-01). Automatic reviews are off too (`reviews.auto_review.enabled: false`, 2026-11-01): CodeRabbit does not auto-review repositories with fewer than 10 stars and still posted a "does not receive automatic reviews" comment on every PR despite `review_status: false`. Reviews start with the PR comment `@coderabbitai review`.
 
 ## Key files
@@ -107,3 +109,4 @@ Last updated: 2026-11-24 (app wording)
 - `max2mqtt/*_test.go`: unit tests (`go test ./...` in `max2mqtt/`)
 - `README.md`, `max2mqtt/README.md`, `max2mqtt/DOCS.md`: repository page, add-on overview, Documentation tab
 - `repository.yaml`: add-on store entry of this fork
+- `.github/workflows/build.yml`: go vet/test, image build for amd64 and arm64; `release.yml` + `.github/scripts/release.sh`: pre-release per version
