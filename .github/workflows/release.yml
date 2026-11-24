@@ -1,0 +1,39 @@
+name: Release
+
+# Publishes a GitHub pre-release for each app version that reaches main
+# (.github/scripts/release.sh). The maintainer turns it into a full release by
+# hand after a test on the device. Existing releases are left alone, so a run
+# without a new version does nothing.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - max2mqtt/config.yaml
+      - max2mqtt/CHANGELOG.md
+      - .github/workflows/release.yml
+      - .github/scripts/release.sh
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# One run at a time; queue: max keeps every pending run (the default keeps
+# only the newest), so each version that reaches main gets its release.
+concurrency:
+  group: release
+  queue: max
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+      # Runs on other branches only show what they would publish
+      DRY_RUN: ${{ github.ref != 'refs/heads/main' && '1' || '' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Publish the pre-release of the current version
+        run: bash .github/scripts/release.sh "$GITHUB_SHA"
