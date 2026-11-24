@@ -1,7 +1,7 @@
-# MAX! to MQTT Bridge Add-on Repository
+# MAX! to MQTT Bridge App Repository
 
 <p align="center">
-   <img src="logo.png" width="300" alt="Home Assistant Add-on MAX! to MQTT Bridge">
+   <img src="logo.png" width="300" alt="Home Assistant app MAX! to MQTT Bridge">
 </p>
 
 Coming from MAX! Cube integration? Your Cube can stay – see "Replacing a MAX! Cube" below.
@@ -12,26 +12,26 @@ If you find this project useful, consider starring the repository! ⭐
 
 MAX! devices only accept commands from the gateway address they were paired with. Set `gateway_id` **before the first start**:
 
-- **Replacing a MAX! Cube:** use the Cube's RF address – no re-pairing needed. Read it from the Cube (`nc <cube-ip> 62910`, first line `H:<serial>,<rf-address>,…`) or from the radio (`log_level: debug`, `dst=` of thermostat/window messages). Then switch the Cube off forever – or, better, flash it with a-culfw and use it as the CUL for this add-on (see below).
+- **Replacing a MAX! Cube:** use the Cube's RF address – no re-pairing needed. Read it from the Cube (`nc <cube-ip> 62910`, first line `H:<serial>,<rf-address>,…`) or from the radio (`log_level: debug`, `dst=` of thermostat/window messages). Then switch the Cube off forever – or, better, flash it with a-culfw and use it as the CUL for this app (see below).
 - **Your Cube can stay:** flashed with [a-culfw](https://github.com/heliflieger/a-culfw/tree/master/culfw/Devices/CUBe) (build "CUBe"), the MAX! Cube works as a network CUL – set `serial_port: tcp://<cube-ip>:2323`. I followed this guide (German): [MaxCube mit CULFW flashen](https://tinkerblog167403696.wordpress.com/maxcube-mit-culfw-flashen/). **Note the Cube's RF address before flashing** – flashing erases the Cube firmware forever.
 - **Coming from FHEM:** use the address of your `CUL_MAX` device.
 - **New installation:** any unused 6-digit hex value (e.g. `123456`), then pair all devices.
 
 Step-by-step guide: [Start here: gateway_id](max2mqtt/README.md#start-here-gateway_id).
 
-This repository contains the MAX! to MQTT Bridge Home Assistant Add-on. 
+This repository contains the MAX! to MQTT Bridge Home Assistant app (called add-on before 2026). 
 
 If you have an existing MAX! installation with e.g. FHEM and you want to migrate to Home Assistant, this might be a solution for you.
 
 I personally want to keep at least my MAX! wall thermostats until there are good alternatives available (battery driven, affordable, modern looking, display...).
 But the current solutions to integrate MAX! components into Home Assistant are not ideal:
 - The official integration requires the ugly MAX! cube (I threw away this device years ago due to instability)
-- The available MAX! add-ons are not really maintained
+- The available MAX! apps are not really maintained
 - The usually recommended usage of Homegear is not a good option: Not maintained anymore and much to overloaded.
 
 Additionally, I was curious to see if I could use AI to help me with the development of this bridge.
 
-This add-on is a lightweight Go-based bridge connecting a CUL (USB serial or network TCP, 868MHz MAX! protocol) to Home Assistant via MQTT. It focuses on usage of an existing MAX! installation with wall thermostats and radiator valves, only supporting the really required functions to be used with Home Assistant. It's not intended as a full replacement of MAX! Cube or the implementation contained in FHEM.
+This app is a lightweight Go-based bridge connecting a CUL (USB serial or network TCP, 868MHz MAX! protocol) to Home Assistant via MQTT. It focuses on usage of an existing MAX! installation with wall thermostats and radiator valves, only supporting the really required functions to be used with Home Assistant. It's not intended as a full replacement of MAX! Cube or the implementation contained in FHEM.
 
 ```yaml
 serial_port: "tcp://192.168.1.50:2323"
@@ -40,7 +40,7 @@ mqtt_broker: "tcp://homeassistant.local:1883"
 gateway_id: "0A1B2C"   # old Cube / FHEM address, see above
 ```
 
-See [Add-On ReadMe](max2mqtt/README.md) and [Documentation](max2mqtt/DOCS.md).
+See [App ReadMe](max2mqtt/README.md) and [Documentation](max2mqtt/DOCS.md).
 
 ## Week profile card (pre-release)
 
@@ -92,4 +92,4 @@ Who made what, newest first. Full list with dates: [CHANGELOG](max2mqtt/CHANGELO
 
 ---
 
-*I use about 10 MAX! thermostats in my home. This add-on was built with the help of [Claude Code in Home Assistant](https://github.com/dktzde/hass-claude-code) and is used and tested every day.*
+*I use about 10 MAX! thermostats in my home. This app was built with the help of [Claude Code in Home Assistant](https://github.com/dktzde/hass-claude-code) and is used and tested every day.*

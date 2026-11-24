@@ -91,9 +91,9 @@ After the last try without an Ack:
 - a setpoint, mode or preset: Home Assistant shows the state from before the command again (or the state the device reported in the meantime);
 - a config change: the previous values come back at once (see `config_status` below);
 - the same happens when a command is dropped without being sent because the duty cycle credits did not suffice within `command_timeout`;
-- the add-on shows the persistent notification `max2mqtt_command_unacked_<id>` in Home Assistant; it disappears after the next acknowledged command to that device, also after a restart of the add-on (the first acknowledged command of each device after the start removes it).
+- the app shows the persistent notification `max2mqtt_command_unacked_<id>` in Home Assistant; it disappears after the next acknowledged command to that device, also after a restart of the app (the first acknowledged command of each device after the start removes it).
 
-Notifications about a device name it the way Home Assistant does, with the radio address in brackets, e.g. "MAX! device Living room (0A1B2C)"; the name is also at the end of the title. The name is the one of the entity with the attribute `device_rf_address` (thermostats), otherwise the device name you set, otherwise the shortest entity name of the device. The add-on reads the names through the Home Assistant template API (`homeassistant_api`) and keeps them for 10 minutes; without a name (or outside Home Assistant) only the address is shown.
+Notifications about a device name it the way Home Assistant does, with the radio address in brackets, e.g. "MAX! device Living room (0A1B2C)"; the name is also at the end of the title. The name is the one of the entity with the attribute `device_rf_address` (thermostats), otherwise the device name you set, otherwise the shortest entity name of the device. The app reads the names through the Home Assistant template API (`homeassistant_api`) and keeps them for 10 minutes; without a name (or outside Home Assistant) only the address is shown.
 
 **Why it failed** is in the notification title, the log and the attributes `config_status`/`command_status` (`reason`, `detail`):
 
@@ -133,7 +133,7 @@ The CUL refills about one credit per second; a message with wakeup preamble cost
 The **Duty Cycle** sensor shows the used part of the CUL's credit maximum in % (0 % = full budget).
 
 Week profile messages are a bulk transfer: they are never discarded for lack of credits, and setpoint, mode or config commands sent in the meantime go first. They are only sent while the credits are above `duty_cycle_min_credits` plus `week_profile_reserve_percent` (default 20 %) of the CUL's credit maximum, so a direct change can still be sent at once. The maximum depends on the firmware: culfw saves up 900 credits (200 + 180 = 380 with the defaults), a-culfw 3600 (200 + 720 = 920). The bridge reads it from the CUL's version line and raises it when a credit report shows more.
-If a week profile message still waits after 60 minutes, the add-on shows a persistent notification in Home Assistant (it keeps waiting); the notification is removed when the profile was sent. This uses the Home Assistant API of the Supervisor (`homeassistant_api`); a bridge running outside Home Assistant only logs it.
+If a week profile message still waits after 60 minutes, the app shows a persistent notification in Home Assistant (it keeps waiting); the notification is removed when the profile was sent. This uses the Home Assistant API of the Supervisor (`homeassistant_api`); a bridge running outside Home Assistant only logs it.
 
 ## TX Flow Diagram
 
@@ -246,7 +246,7 @@ CUL delivers device Acks as soon as the thermostat answers. Flow:
   timeout: "00:01:00"
 ```
 
-The state is not kept across a restart of the add-on.
+The state is not kept across a restart of the app.
 
 There is no “query all config” over CUL: MAX! devices cannot be asked for their settings.
 
@@ -349,19 +349,19 @@ MAX! devices cannot be asked for their week profile, so the bridge shows the las
 `<day>` is `monday` … `sunday`. Days that did not change are not sent again.
 A day with up to 7 control points takes one radio message, more take two. Messages wait for duty cycle credits if needed.
 Each message waits for the device's Ack before the next one is sent (at most 5 s, usually about 2 s) and is sent again up to 3 times without one. If a day is still not acknowledged, the bridge forgets it (unknown, so the next `programme/set` sends it again instead of skipping it as unchanged) and shows a persistent notification in Home Assistant.
-**Day groups:** when Monday to Friday get the same control points in one command, they go out as one message with day number 8, the same for Saturday and Sunday with day number 7, so a whole week takes 2 messages instead of 7; the same control points on all seven days go out as one message with day number 9 (Monday to Sunday). A radiator thermostat does the same itself when its week program is edited on the device: it sends the program to its linked thermostats as two messages, day 8 (Monday to Friday) and day 7 (Saturday/Sunday), or as one message with day 9 after Mo-So was edited; found by listening with a CUL, not documented by FHEM or the Cube protocol. If a device does not acknowledge a group message, the bridge forgets those days and sends single days to that device until the add-on restarts.
+**Day groups:** when Monday to Friday get the same control points in one command, they go out as one message with day number 8, the same for Saturday and Sunday with day number 7, so a whole week takes 2 messages instead of 7; the same control points on all seven days go out as one message with day number 9 (Monday to Sunday). A radiator thermostat does the same itself when its week program is edited on the device: it sends the program to its linked thermostats as two messages, day 8 (Monday to Friday) and day 7 (Saturday/Sunday), or as one message with day 9 after Mo-So was edited; found by listening with a CUL, not documented by FHEM or the Cube protocol. If a device does not acknowledge a group message, the bridge forgets those days and sends single days to that device until the app restarts.
 State: `max/<id>/week_profile/<day>` (FHEM syntax, shown by the text entities) and `max/<id>/programme` (whole week, MAX! Cube format).
-**Was it acknowledged?** The climate attribute `programme_status` shows, for each day sent since the add-on started, `pending` (sent, waiting for the device), `acknowledged` (the device acknowledged every message of that day) or `not_acknowledged` (no Ack after 3 tries), each with the time it was set: `{"monday": {"state": "acknowledged", "at": "2026-11-05T09:41:43+01:00"}}`. Days that were only imported or skipped as unchanged keep their previous state. The state is not kept across a restart of the add-on.
+**Was it acknowledged?** The climate attribute `programme_status` shows, for each day sent since the app started, `pending` (sent, waiting for the device), `acknowledged` (the device acknowledged every message of that day) or `not_acknowledged` (no Ack after 3 tries), each with the time it was set: `{"monday": {"state": "acknowledged", "at": "2026-11-05T09:41:43+01:00"}}`. Days that were only imported or skipped as unchanged keep their previous state. The state is not kept across a restart of the app.
 
 ### After a restart
 
-The bridge keeps its device data in `/data/devices.json` (the add-on's persistent folder): last state (mode, setpoint, actual temperature), valve position, room/group ID, device type, config values and whether they are known, and the week profile.
+The bridge keeps its device data in `/data/devices.json` (the app's persistent folder): last state (mode, setpoint, actual temperature), valve position, room/group ID, device type, config values and whether they are known, and the week profile.
 It is written at most every 30 s when something changed, and on shutdown. Standalone (Docker): set `DEVICE_DATA_FILE` to a persistent path.
 Only a device the bridge has never heard of starts as `heat` (manual) until its first status message.
 
 ### Debug logging
 
-Set `log_level: debug` in the add-on options (or `LOG_LEVEL=debug`). That enables:
+Set `log_level: debug` in the app options (or `LOG_LEVEL=debug`). That enables:
 
 - Raw CUL RX lines and credit reports
 - Full MAX packet headers (`dst`, `group`, `flag`, `cnt`, raw hex)
@@ -380,7 +380,7 @@ Keep `info` for normal operation; debug is verbose.
 
 `fakeSCaddr` / `fakeWTaddr` are FHEM-only CUL_MAX attributes (virtual shutter contact / wall thermostat). max2mqtt does not use them for SetTemperature.
 
-## Add-on Configuration
+## App Configuration
 
 
 ### Unknown devices (`accept_unknown_devices`)
@@ -388,7 +388,7 @@ Keep `info` for normal operation; debug is verbose.
 A device the bridge does not know yet (not in `/data/devices.json`, not heard since the start) is created only from a telegram addressed to the gateway (`gateway_id`), or after it was paired with the bridge (`max/bridge/pair`). Its telegrams to other devices or to the broadcast address are ignored and logged once (`Ignored telegrams from an unknown device`). This keeps garbled radio lines and the neighbour's thermostats out of Home Assistant. Set `accept_unknown_devices: true` to create every device heard, as before (e.g. thermostats that are only linked to each other and never paired).
 ### Watchdog and restart
 
-There is no watchdog endpoint configured in the addon nor there is a healtcheck configured in Dockerfile. So, we only rely on the containers Exited state, which signals that the main process (PID 1) of the container has died. If you want to automatically restart the add-on in such case, then activate the Watchdog button on the Add-on information page.
+There is no watchdog endpoint configured in the app nor there is a healtcheck configured in Dockerfile. So, we only rely on the containers Exited state, which signals that the main process (PID 1) of the container has died. If you want to automatically restart the app in such case, then activate the Watchdog button on the app's Info page.
 
 A CUL that hangs without closing the connection is handled inside the bridge (see the transport section above: reconnect after 2.5 minutes without a line).
 
@@ -413,7 +413,7 @@ Use the full path in your config:
 
 If your CUL is reachable over the network (CUN/CUNO, ESP/ser2net bridge, etc.), set `serial_port` to a URL instead of a device path.
 
-**Add-on options example:**
+**App options example:**
 
 ```yaml
 serial_port: "tcp://192.168.1.50:2323"
@@ -427,9 +427,9 @@ log_level: "info"
 
 - Prefer `tcp://host:port` (e.g. `tcp://192.168.1.50:2323`). Port is required.
 - `telnet://host:port` works as an alias (same raw TCP dial; no Telnet IAC negotiation).
-- Host may be an IP or DNS name reachable from the Home Assistant host / add-on network.
+- Host may be an IP or DNS name reachable from the Home Assistant host / app network.
 - `baud_rate` is ignored for network CULs; leave the default.
-- Do **not** map USB devices under the add-on hardware settings when using TCP.
+- Do **not** map USB devices under the app's hardware settings when using TCP.
 
 **Successful connect** appears in the log as:
 
@@ -447,7 +447,7 @@ The log shows `Garbled CUL line dropped: no MAX! telegram has this length` when 
 
 ### Cannot open CUL / reconnect loop
 
-- **USB:** Confirm the device path exists inside the add-on (`/dev/serial/by-id/...`) and that the add-on has access to the stick.
+- **USB:** Confirm the device path exists inside the app (`/dev/serial/by-id/...`) and that the app has access to the stick.
 - **TCP:** Confirm another host can open `host:port` (firewall, correct port — often `2323`). Check the log for `Failed to connect to CUL over TCP` or `Invalid CUL network URL`.
 - The bridge retries every few seconds after a failed open or a dropped connection.
 
