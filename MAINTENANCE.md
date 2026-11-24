@@ -18,6 +18,7 @@ There is no `STATUS.md`: the maintainer keeps the device state and the next step
 - No private data (IP addresses, real RF addresses) in this public repository; examples use placeholders such as `0A1B2C`.
 - **Protocol references:** FHEM `10_MAX.pm` (device messages, `desiredTemperature … until`) and `14_CUL_MAX.pm` (CUL side) from [fhem/fhem-mirror](https://github.com/fhem/fhem-mirror) (`fhem/FHEM/`); Cube LAN protocol incl. byte layouts in [Bouni/max-cube-protocol](https://github.com/Bouni/max-cube-protocol). Check there before guessing a message layout.
 - Go is installed only for a session (`apk add go`), gone after an add-on restart of the Claude Code add-on.
+- **Releases:** a new version on `main` gets a GitHub pre-release automatically (`release.yml`). After the test on the device the maintainer makes it the full release by hand (`gh release edit v<version> --prerelease=false --latest`, title with a short summary); a full release may sum up several pre-releases.
 - **CodeRabbit** (AI review of PRs against our `main`): settings in `.coderabbit.yaml` (#11, 2026-10-31). Release PRs (`chore(release)`) and docs PRs are not reviewed automatically. Active once the maintainer installs the CodeRabbit GitHub app for this repository. Docstring coverage check off (`pre_merge_checks.docstrings.mode: "off"`, 2026-11-01): the upstream code has no docstring rule. Status comments ("review skipped"/"in progress") are off: `reviews.review_status: false` (2026-11-01). Automatic reviews are off too (`reviews.auto_review.enabled: false`, 2026-11-01): CodeRabbit does not auto-review repositories with fewer than 10 stars and still posted a "does not receive automatic reviews" comment on every PR despite `review_status: false`. Reviews start with the PR comment `@coderabbitai review`.
 
 ## Known issues and backlog
@@ -47,4 +48,5 @@ There is no `STATUS.md`: the maintainer keeps the device state and the next step
 - `max2mqtt/*_test.go`: unit tests (`go test ./...` in `max2mqtt/`)
 - `README.md`, `max2mqtt/README.md`, `max2mqtt/DOCS.md`: repository page, app overview, Documentation tab
 - `.github/workflows/build.yml`: go vet and tests, image build, start and stop for amd64 and arm64
+- `.github/workflows/release.yml`, `.github/scripts/release.sh`: GitHub pre-release for each new version on `main`
 - `repository.yaml`: app store entry of this fork
