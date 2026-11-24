@@ -58,4 +58,18 @@ jobs:
           echo "config.yaml $want, image label $got"
           [ "$want" = "$got" ]
           docker run --rm --platform ${{ matrix.platform }} --entrypoint sh max2mqtt-test:local -c \
-            'test -x /app/max2mqtt && test -x /app/run.sh && ls /usr/share/zoneinfo/Europe/Berlin && cat /etc/alpine-release'
+            'test -x /app/max2mqtt && test -x /app/run.sh && ls /usr/share/zoneinfo/Europe/Berlin && cat /etc/alpine-release && uname -m'
+      - name: Start and stop the bridge
+        run: |
+          # The binary runs on this architecture: it starts (no broker, no CUL here,
+          # both are retried in the background) and stops cleanly on SIGTERM
+          docker run -d --name smoke --platform ${{ matrix.platform }} -e MQTT_BROKER=tcp://127.0.0.1:1 max2mqtt-test:local
+          sleep 5
+          docker stop -t 10 smoke
+          docker logs smoke > smoke.log 2>&1
+          cat smoke.log
+          status=$(docker inspect -f '{{ .State.ExitCode }}' smoke)
+          echo "Exit code $status"
+          grep -q 'Starting MAX! to MQTT Bridge' smoke.log
+          grep -q 'Shutting down' smoke.log
+          [ "$status" = 0 ]
