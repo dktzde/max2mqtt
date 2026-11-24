@@ -42,6 +42,8 @@ gateway_id: "0A1B2C"   # old Cube / FHEM address, see above
 
 See [App ReadMe](max2mqtt/README.md) and [Documentation](max2mqtt/DOCS.md).
 
+The app is built for `amd64` and `aarch64`. Every pull request and every push to `main` test-builds it for both, each on a GitHub runner of that architecture, and checks the image. **I have no `aarch64` hardware (such as a Raspberry Pi) to test on myself**, so on `aarch64` only these automatic test builds check the app, not a real device.
+
 ## Week profile card (pre-release)
 
 Edit the week programme of your thermostats as a curve in the dashboard: [max-week-profile-card](https://github.com/dktzde/max-week-profile-card) (HACS, type Dashboard). Drag steps and edges, edit Mon–Fri or Sat–Sun at once, send only the changed days and see per day whether the thermostat confirmed it. It reads the `programme` attribute of max2mqtt and writes through its week profile entities. Still a pre-release – feedback welcome.
