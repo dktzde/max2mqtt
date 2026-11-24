@@ -24,7 +24,7 @@ Format: 6 hex digits without `0x`, e.g. `0A1B2C`.
      In the log, `Parsed Packet detail` of the state messages (`type=0x60` radiator thermostat, `0x70` wall thermostat, `0x30` shutter contact) shows `dst=<address>`.
      That is the address your devices still report to – the Cube's RF address (ignore `dst=000000` and addresses of your own devices).
 2. **Switch the Cube off for good.** Two gateways with the same address would both acknowledge and send, and the Cube would overwrite settings.
-3. Set `gateway_id` to the Cube's RF address and restart the add-on.
+3. Set `gateway_id` to the Cube's RF address and restart the app.
 4. **Check:** window contacts stop repeating their messages (the CUL now acknowledges them, see [Auto-Ack](DOCS.md#auto-ack-za)), their RF error sensor turns off, and a setpoint change from Home Assistant is confirmed in the log (`Short Ack applied pending setpoint`, no retry).
 
 Nothing has to be transferred for the devices to work: week programs, eco/comfort temperatures and associations (e.g. shutter contact ↔ thermostat) are stored in the devices.
@@ -38,12 +38,12 @@ If you have an existing MAX! installation with e.g. FHEM and you want to migrate
 I personally want to keep at least my MAX! wall thermostats until there are good alternatives available (battery driven, affordable, modern looking, display...).
 But the current solutions to integrate MAX! components into Home Assistant are not ideal:
 - The official integration requires the ugly MAX! cube (I threw away this device years ago due to instability)
-- The available MAX! add-ons are not really maintained
+- The available MAX! apps are not really maintained
 - The usually recommended usage of Homegear is not a good option: Not maintained anymore and much to overloaded.
 
 Additionally, I was curious to see if I could use AI to help me with the development of this bridge.
 
-This add-on is a lightweight Go-based bridge connecting a CUL (USB serial or network TCP, 868MHz MAX! protocol) to Home Assistant via MQTT. It focuses on usage of an existing MAX! installation with wall thermostats and radiator valves, only supporting the really required functions to be used with Home Assistant. It's not intended as a full replacement of MAX! Cube or the implementation contained in FHEM.
+This app is a lightweight Go-based bridge connecting a CUL (USB serial or network TCP, 868MHz MAX! protocol) to Home Assistant via MQTT. It focuses on usage of an existing MAX! installation with wall thermostats and radiator valves, only supporting the really required functions to be used with Home Assistant. It's not intended as a full replacement of MAX! Cube or the implementation contained in FHEM.
 
 ## History
 
@@ -76,7 +76,7 @@ Who made what, newest first. Full list with dates: [CHANGELOG](CHANGELOG.md).
 ### v1.4.2 (2026-10-28, this fork) — Week profile: wait 120 minutes, notification after 60
 
 - Week profile messages wait up to 120 minutes (before: 60) for duty cycle credits
-- **Home Assistant notification** when a week profile message still waits after 60 minutes (it keeps waiting); removed when the profile was sent, replaced by a "discarded" notification after 120 minutes. The add-on now asks for `homeassistant_api` (Home Assistant shows the new permission on update)
+- **Home Assistant notification** when a week profile message still waits after 60 minutes (it keeps waiting); removed when the profile was sent, replaced by a "discarded" notification after 120 minutes. The app now asks for `homeassistant_api` (Home Assistant shows the new permission on update)
 
 ### v1.4.1 (2026-10-28, this fork) — Week profile wait time
 
@@ -199,15 +199,15 @@ These are the features:
 Prefer Home Assistant schedules for day-to-day heating; the device week profile can be set per day (text entities) or in MAX! Cube format, see DOCS.
 To edit the week profile as a curve in the dashboard, use the [max-week-profile-card](https://github.com/dktzde/max-week-profile-card) (pre-release).
 
-## Installation and Configuration as Home Assistant Add-on
+## Installation and Configuration as Home Assistant App
 
-1.  Prepare the Add-on:
+1.  Prepare the app:
     - Either copy this directory to your Home Assistant `addons/local/max2mqtt` folder.
-    - Or use the Add-on Store in Home Assistant: Add the repository `https://github.com/dktzde/max2mqtt` (this fork: Auto-Ack, valve position and shutter contacts, on top of Dad-Ju's network CUL support and device configuration). Upstream: `https://github.com/Dad-Ju/max2mqtt`, originally `https://github.com/pwurbs/max2mqtt`.
-2.  Navigate to the Add-on Store, either the Local addon-ons section or the configured repository.
+    - Or add the repository in Home Assistant (**Settings** > **Apps** > **Install app**, menu at the top right > **Repositories**): `https://github.com/dktzde/max2mqtt` (this fork: Auto-Ack, valve position and shutter contacts, on top of Dad-Ju's network CUL support and device configuration). Upstream: `https://github.com/Dad-Ju/max2mqtt`, originally `https://github.com/pwurbs/max2mqtt`.
+2.  Open **Settings** > **Apps** > **Install app**, either the local apps or the added repository.
 3.  Install **MAX! to MQTT Bridge**.
 4.  Configure the parameters like described below – set `gateway_id` first, see [Start here](#start-here-gateway_id).
-5.  Start the Add-on.
+5.  Start the app.
 
 ### Quick start: Network CUL
 
@@ -215,8 +215,8 @@ If your CUL is reachable over TCP (CUN/CUNO, ESP/ser2net, etc.):
 
 1. Set `serial_port` to `tcp://<ip>:<port>` (e.g. `tcp://192.168.1.50:2323`).
 2. Leave `baud_rate` at the default; it is not used for TCP.
-3. You do **not** need to map USB devices in the add-on for a network CUL.
-4. Start the add-on and check the log for `Opened CUL TCP connection`.
+3. You do **not** need to map USB devices in the app for a network CUL.
+4. Start the app and check the log for `Opened CUL TCP connection`.
 
 USB sticks still use a path such as `/dev/serial/by-id/...` plus `baud_rate` as before.
 
@@ -238,7 +238,7 @@ USB sticks still use a path such as `/dev/serial/by-id/...` plus `baud_rate` as 
 | `TX_CHECK_PERIOD` | `tx_check_period` | `1m` | Duration to wait for device verification before retrying Set Temp commands |
 
 > **Note on Configuration:**
-> *   **Home Assistant Add-on:** The application automatically reads configuration from `/data/options.json`. This file is generated by the Home Assistant Supervisor at runtime based on the values defined in `config.yaml`.
+> *   **Home Assistant app:** The application automatically reads configuration from `/data/options.json`. This file is generated by the Home Assistant Supervisor at runtime based on the values defined in `config.yaml`.
 > *   **Standalone / Docker:** Configuration via Environment Variables takes precedence if `/data/options.json` is not found.
 
 ## Pairing New Devices
@@ -288,7 +288,7 @@ Use the Home Assistat UI to publish the MQTT messages.
 
 ## More Information
 
-Find more detailled information on the Documentation tab of the "MAX! to MQTT Bridge" addon configuration in the Home Assistant settings.
+Find more detailled information on the Documentation tab of the "MAX! to MQTT Bridge" app in the Home Assistant settings.
 
 ## Feedback
 
